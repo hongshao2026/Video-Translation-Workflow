@@ -1,0 +1,372 @@
+{
+  "schema_version": 7,
+  "name": "外语长视频中文译配工作流",
+  "summary": "从公开视频链接到时间轴对齐、保留原画质、带中文字幕的中文配音成片，并生成无广告中文发布文案、最终章节和双比例封面。",
+  "team": {
+    "recommended_agents": 6,
+    "required_agent_roles": 6,
+    "mandatory_translation_agents": 1,
+    "mandatory_translation_reviewers": 2,
+    "peak_concurrency": 3,
+    "policy": "required_by_stage",
+    "note": "常驻 1 个主控；下载/媒体与质检按阶段接力；阶段 04 必须由独立 Agent T 直接全文翻译，阶段 05 必须同时开启两个独立审核 Agent A/B。T、A、B 与主控角色互不重复；任一必需角色不可用时停止，禁止静默降级。"
+  },
+  "required_documents": [
+    "AGENTS.md",
+    "docs/LOCAL_DUBBING_WORKFLOW.md",
+    "docs/AD_DETECTION_AND_OVERLAY_SOP.md",
+    "docs/TRANSLATION_REVIEW_SOP.md",
+    "docs/workflow.definition.json",
+    "<video_id>_run/PROJECT.md"
+  ],
+  "global_hard_rules": [
+    "冻结正式时间槽前必须检测内容广告和画面广告；按冻结的多证据规则自动决定删除、遮盖或保留，不再逐项请求用户批准，并生成 ad_edit_gate=pass。",
+    "原始下载母版不得覆盖；正式工作母版之外的时间差必须有原时轴到新时轴映射。",
+    "广告遮盖只在分析确认的区间内生效，渲染顺序固定为视频→遮盖→字幕，字幕必须在最上层。",
+    "默认采用质量优先模式：独立 Agent T 不参考本地旧译稿，直接根据冻结源文和术语表翻译全文。",
+    "Agent T 候选稿冻结后，必须由两个与 T 和主控不同的独立审核 Agent A/B 各自覆盖全文，再由主控合并裁决并取得用户批准。",
+    "主控裁决和回归后必须按章节生成中文阅读稿；阅读稿完整且唯一覆盖全部稳定 ID、逐字使用正式 subtitle_zh，并由用户批准绑定的阅读稿与正式翻译哈希，之后 translation_gate 才能 pass。",
+    "章节阅读稿默认采用 chapter_reading_layout=sentence_aligned_verbatim：同一章节内连续拼接相邻稳定槽，只在完整句末或章节结束处分段；稳定 ID 内联不可见且完整唯一有序，每槽 subtitle_zh 必须可逐字重建，章节可见正文不得增删，禁止跨章节移动稳定 ID。",
+    "本地 Ollama/Qwen 仅可辅助结构、数字、错位、漏译或争议句检查，不得生成默认候选稿或替代 T/A/B。",
+    "没有 qa/translation_gate.json 的 pass 状态或输入哈希不匹配时，角色识别、选音和 TTS 均锁定。",
+    "中文 TTS speed 必须为 1.0，离线处理 offline_rate 必须为 1.0，中文轨禁止任何 tempo/stretch。",
+    "音画时长差只能通过完整源画面的视频重定时解决；字幕按中文新时间轴重建。",
+    "没有 qa/production_gate.json 的 pass 状态时禁止渲染。",
+    "最终机器 QA 通过后必须生成中文标题、无广告中文简介和按当前中文成片实际重定时映射换算的最终章节；不得复用原视频、工作母版或旧成片时间。",
+    "每条正式成片默认生成 1920×1080 的 16:9 PNG 封面和 1440×1080 的 4:3 PNG 封面；文字、人物、外文人名、安全边距和广告残留必须通过检查，4:3 不得机械裁掉关键内容。",
+    "没有 qa/publication_package_gate_vN.json 的 pass 状态或成片/文案/章节/封面哈希不匹配时，发布包不得交付。",
+    "角色音色锁定后直接允许生成一分钟试听，不设试听费用或生成批准。",
+    "试听后用户发出生成全片、生成全文或等价指令，即授权当前冻结输入的全文付费 TTS 与渲染；自动 dry-run 通过后直接继续，不再请求二次确认。"
+  ],
+  "stage_transition_gates": [
+    {
+      "from": "01",
+      "to": "02-08",
+      "artifact": "qa/workflow_lock.json",
+      "required_status": "pass",
+      "on_failure": "stop"
+    },
+    {
+      "from": "03",
+      "to": "04-08",
+      "artifact": "qa/ad_edit_gate.json",
+      "required_status": "pass",
+      "require_input_hash_match": true,
+      "on_failure": "stop"
+    },
+    {
+      "from": "05",
+      "to": "06-08",
+      "artifact": "qa/translation_gate.json",
+      "required_status": "pass",
+      "require_input_hash_match": true,
+      "on_failure": "stop"
+    },
+    {
+      "from": "07-plan-video",
+      "to": "07-render-video",
+      "artifact": "qa/production_gate.json",
+      "required_status": "pass",
+      "require_input_hash_match": true,
+      "on_failure": "stop"
+    },
+    {
+      "from": "08-final-machine-qa",
+      "to": "08-publication-and-delivery",
+      "artifact": "qa/publication_package_gate_vN.json",
+      "required_status": "pass",
+      "require_input_hash_match": true,
+      "on_failure": "stop"
+    }
+  ],
+  "publication_package": {
+    "required": true,
+    "stage": "08",
+    "policy": "required_after_final_machine_qa",
+    "text_delivery_format": "utf8_txt_only",
+    "text_delivery_chat_echo_required": true,
+    "title_policy": "3_to_5_candidates_unless_user_requests_one",
+    "description_policy": "natural_simplified_chinese_keep_original_link_remove_ads_promotions_tracking_links_subscription_ctas_unrelated_hashtags_and_keyword_stuffing",
+    "chapter_timeline": "source_to_approved_working_master_to_current_retimed_output",
+    "chapter_requirements": [
+      "source_count_matches",
+      "strictly_increasing",
+      "within_final_duration",
+      "current_final_media_sha256_bound"
+    ],
+    "cover_variants": [
+      {"id": "16x9", "format": "png", "width": 1920, "height": 1080},
+      {"id": "4x3", "format": "png", "width": 1440, "height": 1080}
+    ],
+    "cover_requirements": [
+      "identity_verified",
+      "foreign_names_verified",
+      "text_exact_and_legible",
+      "safe_margins_pass",
+      "visual_series_consistent",
+      "advertising_residue_count_zero",
+      "4x3_recomposed_not_destructive_crop"
+    ],
+    "artifacts": [
+      "deliverables/<video_id>_发布材料_vN.txt",
+      "deliverables/<video_id>_中文简介与章节_vN.txt",
+      "deliverables/<video_id>_片中书单_vN.txt",
+      "qa/chapter_timeline_vN.json",
+      "qa/publication_materials_vN.json",
+      "deliverables/covers/<video_id>_中文封面_16x9_vN.png",
+      "deliverables/covers/<video_id>_中文封面_4x3_vN.png",
+      "qa/cover_art_vN.json",
+      "qa/publication_package_gate_vN.json"
+    ]
+  },
+  "tested_case": {
+    "included": false,
+    "note": "项目媒体、输出、计费明细与运行记录不进入可移植工作流仓库。"
+  },
+  "agents": [
+    {
+      "id": "orchestrator",
+      "name": "主控 Agent",
+      "short_name": "主控",
+      "purpose": "建立项目目录、冻结输入版本、安排依赖、处理人工确认并记录每次交接。",
+      "active_in": ["01", "04", "05", "06", "08"],
+      "deliverables": ["项目状态清单", "版本与哈希记录", "中文发布材料", "双比例封面", "发布包门禁", "最终放行结论"]
+    },
+    {
+      "id": "media",
+      "name": "下载与媒体 Agent",
+      "short_name": "媒体",
+      "purpose": "执行 yt-dlp、FFmpeg、Demucs、Whisper、说话人切分、TTS、画面重定时与封装。",
+      "active_in": ["02", "03", "06", "07"],
+      "deliverables": ["高清源文件", "ASR 与时间槽", "逐句语音缓存", "1080p 成片"]
+    },
+    {
+      "id": "translator",
+      "name": "翻译 Agent T",
+      "short_name": "全文直译",
+      "purpose": "不参考本地旧译稿，直接根据冻结源文、说话人、上下文和术语表生成完整中文候选稿。",
+      "active_in": ["04"],
+      "required": true,
+      "coverage": "full",
+      "independent_from": ["reviewer_a", "reviewer_b", "orchestrator"],
+      "deliverables": ["Agent T 全文候选 JSON/SRT", "translation_agent_t_manifest", "完整 ID 覆盖证明", "源文/术语表/候选稿哈希"]
+    },
+    {
+      "id": "reviewer_a",
+      "name": "翻译审核 Agent A",
+      "short_name": "中文审核",
+      "purpose": "全文检查中文口语、上下文、跨槽衔接、标点和 TTS 可读性。",
+      "active_in": ["05"],
+      "required": true,
+      "coverage": "full",
+      "independent_from": ["translator", "reviewer_b", "orchestrator"],
+      "deliverables": ["独立全文审核报告 A", "完整 ID 覆盖证明", "冻结输入哈希"]
+    },
+    {
+      "id": "reviewer_b",
+      "name": "翻译审核 Agent B",
+      "short_name": "语义审核",
+      "purpose": "全文检查源文忠实度、数字、否定、主客体、术语和专业逻辑。",
+      "active_in": ["05"],
+      "required": true,
+      "coverage": "full",
+      "independent_from": ["translator", "reviewer_a", "orchestrator"],
+      "deliverables": ["独立全文审核报告 B", "完整 ID 覆盖证明", "冻结输入哈希"]
+    },
+    {
+      "id": "qc",
+      "name": "独立质检 Agent",
+      "short_name": "质检",
+      "purpose": "不参与生成，独立核对流信息、全片解码、字幕数量、音量、帧与哈希。",
+      "active_in": ["08"],
+      "deliverables": ["机器验收报告", "人工抽查清单", "交付哈希"]
+    }
+  ],
+  "manual_gates": [
+    {
+      "id": "cookie",
+      "label": "在目标视频页手动导出 YouTube Cookie",
+      "stage": "02",
+      "why": "Cookie 等同登录凭证；只提供本机文件路径，不复制内容，不写入项目。",
+      "sensitive": true
+    },
+    {
+      "id": "format",
+      "label": "确认最高画质和正确的原语言音轨",
+      "stage": "02",
+      "why": "格式编号和多语言音轨每条视频都不同，不能硬编码。",
+      "sensitive": false
+    },
+    {
+      "id": "translation",
+      "label": "通读按章节中文阅读稿，并批准其绑定的最终翻译 JSON / SRT 版本",
+      "stage": "05",
+      "why": "只有 Agent T 完成源文直译、两个独立审核 Agent A/B 均覆盖全文、主控完成裁决与回归，再生成完整且唯一覆盖全部槽位的章节阅读稿，并取得绑定阅读稿与正式翻译哈希的用户批准，才能生成 translation_gate=pass 并解锁角色、选音与正式付费配音。",
+      "sensitive": false
+    },
+    {
+      "id": "voices",
+      "label": "为每个角色选择并锁定音色",
+      "stage": "06",
+      "why": "音色审美和人物匹配属于创作决定，Agent 只能推荐；一旦锁定即可直接生成一分钟试听，不再另设费用或生成批准。",
+      "sensitive": false
+    },
+    {
+      "id": "final_review",
+      "label": "人工观看成片，并确认标题、简介、最终章节和双比例封面",
+      "stage": "08",
+      "why": "机器验收能证明文件完整及发布包结构正确，不能代替人物、语气、观看体验和封面/文案审美判断。",
+      "sensitive": false
+    },
+    {
+      "id": "delivery_login",
+      "label": "如需网盘交付，由本人登录并指定目录",
+      "stage": "08",
+      "why": "外部账号登录和最终上传位置必须由账号持有人确认。",
+      "sensitive": true,
+      "optional": true
+    }
+  ],
+  "stages": [
+    {
+      "number": "01",
+      "id": "intake",
+      "title": "立项与工作流锁",
+      "mode": "自动冻结",
+      "owner": "orchestrator",
+      "summary": "记录链接、视频 ID、目标语言、角色数量和输出规格，建立独立运行目录。",
+      "tasks": ["创建 <video_id>_run 目录", "完整读取全部 required_documents", "冻结输入链接与任务目标", "冻结最终发布包策略与双比例封面规格", "生成 qa/workflow_lock.json 并记录规则文件哈希与硬性策略"],
+      "inputs": ["公开视频链接", "目标：中文配音 + 中文字幕"],
+      "outputs": ["项目目录", "任务状态清单", "发布包策略", "qa/workflow_lock.json"],
+      "required_gate": {
+        "artifact": "qa/workflow_lock.json",
+        "status": "pass",
+        "conditions": ["required_document_hashes_complete=true", "ad_policy=detect_then_apply_evidence_based", "translation_mode=codex_agent_direct_quality_first", "translation_review=two_independent_agents_full_coverage", "chapter_reading_review=required_before_translation_gate", "chapter_reading_layout=sentence_aligned_verbatim", "chinese_tts_speed=1.0", "chinese_offline_rate=1.0", "sync_strategy=video_retime_only", "preserve_all_formal_working_master_frames=true", "subtitle_timeline=rebuilt_from_chinese_audio", "audition_authorization=voice_selection_implies_audition", "full_tts_authorization=user_generate_full_command", "publication_package=required_after_final_machine_qa", "publication_text_format=utf8_txt_only", "cover_variants=16x9_and_4x3"]
+      },
+      "resume_from": "项目目录与冻结的输入记录"
+    },
+    {
+      "number": "02",
+      "id": "acquire",
+      "title": "高清下载与源文件验收",
+      "mode": "人机协作",
+      "owner": "media",
+      "summary": "人工提供 Cookie 与格式决策，Agent 下载画面/原声、无重编码合并并全片解码。",
+      "tasks": ["yt-dlp -F 查询格式", "并行下载 video-only / audio-only", "FFmpeg -c copy 合并", "ffprobe、全片解码与 SHA-256"],
+      "inputs": ["链接", "Cookie 文件路径", "已批准的视频/音频格式编号"],
+      "outputs": ["source/youtube_high_quality.mp4", "源文件探测记录与哈希"],
+      "resume_from": "已完成的独立画面/音频文件；直链过期时只重新取直链"
+    },
+    {
+      "number": "03",
+      "id": "transcribe",
+      "title": "广告检测、分离、转写与时间槽",
+      "mode": "自动检测 + 证据规则自动处置",
+      "owner": "media",
+      "co_owners": ["orchestrator"],
+      "summary": "先对原始母版检测口播广告和画面广告，按多证据规则自动删除、遮盖或保留；再基于正式工作母版分离对白与背景、生成词级 ASR 和稳定时间槽。",
+      "tasks": ["初步 ASR、章节与全片抽帧/OCR 广告扫描", "输出内容广告与画面广告候选", "按冻结证据规则自动决定 remove/mask/keep", "保留原始母版并创建工作母版", "生成原新时轴映射和遮盖计划", "Demucs 分离", "faster-whisper 词级转写", "按停顿生成 slots", "生成 qa/ad_edit_gate.json", "检查 ID、时间单调与工作母版覆盖范围"],
+      "inputs": ["高清源视频或原声音频"],
+      "outputs": ["qa/ad_detection.json", "qa/ad_decisions.json", "qa/ad_overlay_plan.json", "qa/source_to_edit_timeline.json", "qa/ad_edit_gate.json", "未覆盖的原始母版", "正式工作母版", "asr_full.json / .srt", "正式 slots JSON / SRT", "背景轨"],
+      "required_gate": {
+        "artifact": "qa/ad_edit_gate.json",
+        "status": "pass",
+        "conditions": ["original_master_preserved=true", "content_ad_scan_complete=true", "visual_ad_scan_complete=true", "all_candidates_have_evidence_based_decision=true", "decision_rule_version_recorded=true", "confidence_and_rationale_recorded=true", "uncertain_candidates_default_keep=true", "source_to_edit_timeline_valid=true", "working_master_hash_recorded=true", "formal_slots_based_on_working_master=true", "render_order=video_overlay_subtitles"]
+      },
+      "resume_from": "各阶段 JSON/WAV；存在且验收通过则跳过"
+    },
+    {
+      "number": "04",
+      "id": "translate",
+      "title": "Codex 翻译 Agent 直接全文翻译",
+      "mode": "质量优先 Agent 翻译",
+      "owner": "translator",
+      "co_owners": ["orchestrator"],
+      "summary": "独立 Agent T 不参考本地旧译稿，直接按稳定 ID、说话人、全文上下文和冻结术语表生成自然完整的中文候选稿；本地模型只做可选辅助 QA。",
+      "tasks": ["冻结源文、稳定 ID、说话人和术语表哈希", "启动与主控/A/B 不同的翻译 Agent T", "按连续 ID 分批直译并维护全片上下文/术语状态", "记录模型、推理档位、覆盖范围和分批进度", "验证 ID、空句、数字、术语、跨槽与 JSON/SRT 结构", "冻结 Agent T 候选稿和 manifest"],
+      "inputs": ["qa/ad_edit_gate.json=pass 且工作母版哈希匹配", "基于正式工作母版的 slots JSON", "说话人和上下文", "冻结术语表", "用户明确决定"],
+      "outputs": ["qa/translation_agent_t_manifest_vN.json", "work/translation_candidate_agent_t_vN.json / .srt", "可选机器 QA 清单"],
+      "hard_constraints": ["translator_is_distinct=true", "direct_from_source=true", "local_draft_as_input=false", "full_id_coverage=true", "semantic_compression_for_timing=false", "local_model_cannot_replace_translator=true"],
+      "exit_rule": "Agent T 缺失 ID=0 且源文/术语表/候选稿哈希已记录；输出仍是候选稿，禁止跳过阶段 05。",
+      "resume_from": "translation_agent_t_manifest 中已验证的连续 ID 批次；额度不足时等待恢复，不用本地模型补齐同一版本"
+    },
+    {
+      "number": "05",
+      "id": "audit",
+      "title": "双 Agent 独立全文审核、章节阅读稿与翻译放行",
+      "mode": "并行审核 + 人工章节阅读关卡",
+      "owner": "reviewer_a",
+      "co_owners": ["reviewer_b", "orchestrator"],
+      "summary": "在 Agent T 候选稿冻结后，两个与 T/主控不同的审核 Agent 独立覆盖全文；主控合并、逐条裁决并回归，再按章节生成中文阅读稿，暂停供用户通读并批准绑定哈希的正式配音稿。",
+      "tasks": ["核验 Agent T manifest 与全文覆盖", "Agent A：中文表达与上下文", "Agent B：语义忠实与专业性", "核验 T/A/B/主控角色互不重复", "主控：合并去重、裁决与落盘", "结构、术语、数字、待定项回归", "按用户/源章节或生成的候选章节组织正式 subtitle_zh", "按 sentence_aligned_verbatim 在同一章节内把跨槽片段连续排成完整句子", "映射原章节到正式工作母版时轴并保留原时轴", "验证全部稳定 ID 完整且唯一覆盖、每槽文本逐字可重建、可见正文无增删、非章节末句中换段为 0", "暂停并交付章节阅读稿供用户通读", "记录绑定阅读稿与正式翻译哈希的用户批准"],
+      "inputs": ["qa/translation_agent_t_manifest_vN.json", "冻结的 Agent T 候选翻译", "源文与前后文", "统一术语表", "用户或源视频章节；缺失时为记录来源的候选章节", "qa/source_to_edit_timeline.json"],
+      "outputs": ["translation_final_vN.json / .srt", "两份独立全文审核报告", "裁决与回归记录", "deliverables/<video_id>_中文阅读版_按章节_vN.md", "qa/chapter_reading_validation_vN.json", "qa/translation_approval_vN.json", "qa/translation_gate.json"],
+      "required_gate": {
+        "artifact": "qa/translation_gate.json",
+        "status": "pass",
+        "conditions": ["mode=codex_agent_direct_quality_first", "translator_missing_ids=0", "translator_source_and_glossary_hashes_match=true", "translator_manifest_hash_recorded=true", "translator_reviewer_roles_distinct=true", "reviewer_a_missing_ids=0", "reviewer_b_missing_ids=0", "same_candidate_sha256=true", "all_report_hashes_recorded=true", "unresolved_high=0", "unresolved_total=0", "regression_status=pass", "chapter_reading_validation=pass", "chapter_reading_layout=sentence_aligned_verbatim", "chapter_reading_missing_slots=0", "chapter_reading_duplicate_slots=0", "chapter_reading_subtitle_text_used_verbatim=true", "chapter_reading_subtitle_text_reconstructable=true", "chapter_reading_visible_text_insertions_or_deletions=0", "chapter_reading_nonterminal_nonchapter_final_line_breaks=0", "chapter_reading_and_final_translation_hashes_recorded=true", "user_approval_hashes_match=true", "user_approved=true"]
+      },
+      "resume_from": "Agent T manifest + 冻结候选稿 + 两份独立报告 + 章节阅读稿验证；任何翻译或章节映射修改都生成新阅读稿并重新请求批准"
+    },
+    {
+      "number": "06",
+      "id": "cast",
+      "title": "角色识别、选音与自动一分钟试听",
+      "mode": "人机协作",
+      "owner": "media",
+      "co_owners": ["orchestrator"],
+      "summary": "Agent 聚类说话人并推荐声线；用户锁定角色音色后，工作台直接运行费用估算并生成一分钟样片，不再设试听费用或生成批准。",
+      "tasks": ["说话人聚类与角色映射", "本地试听库或 MiniMax 缓存试听", "逐角色选音并锁定映射", "自动 dry-run 并显示字符与费用估算", "直接生成一分钟试听", "一分钟字幕、语气、回声与角色机器检查"],
+      "inputs": ["正式翻译稿", "qa/translation_gate.json=pass 且哈希匹配", "源视频", "角色名称", "声音库"],
+      "outputs": ["role_map.json", "角色→音色映射", "一分钟试听片"],
+      "entry_rule": "translation_gate 缺失、非 pass 或正式翻译哈希不匹配时禁止进入。",
+      "resume_from": "role_map.json、已锁定的音色配置与已验证试听缓存"
+    },
+    {
+      "number": "07",
+      "id": "synthesize",
+      "title": "原速配音与平滑画面重定时",
+      "mode": "自动可续跑",
+      "owner": "media",
+      "summary": "中文语音始终 1.0 原速；短句加速画面、长句放慢画面，合并短区间并平滑边界。",
+      "tasks": ["验证 ad_edit_gate、translation_gate 和冻结输入哈希", "验证已记录针对当前冻结输入的用户生成全片/全文指令", "自动做付费 dry-run 并记录字符、批次、费用与缓存", "dry-run 通过后不停顿，按角色以 speed=1.0 批量 TTS", "按字级时间戳重建不变速的中文时间轴", "合并区块并计算平滑视频速度曲线", "重定时正式工作母版与原音轨", "按时间与坐标应用广告遮盖", "最后烧录字幕并附加软字幕轨", "生成并通过 production_gate"],
+      "inputs": ["正式工作母版", "qa/ad_edit_gate.json=pass 且哈希匹配", "qa/ad_overlay_plan.json", "translation_final_vN", "qa/translation_gate.json=pass 且哈希匹配", "role_map", "已锁定音色映射", "用户生成全片/全文指令记录", "自动 dry-run 记录"],
+      "outputs": ["tts/manifest.json", "chinese_voice.wav", "video_retime_plan.json", "qa/production_gate.json", "中文字幕", "最终 MP4"],
+      "hard_constraints": {
+        "tts_speed": 1.0,
+        "offline_rate": 1.0,
+        "forbidden_on_chinese_audio": ["atempo", "rubberband", "librosa.time_stretch", "sample_rate_speed_hack", "truncate_voiced_content", "old_timeline_amix"],
+        "timing_resolution": "video_retime_only",
+        "preserve_all_formal_working_master_frames": true,
+        "subtitles_follow": "rebuilt_chinese_timeline",
+        "overlay_scope": "evidence_confirmed_intervals_and_coordinates_only",
+        "render_order": ["retimed_video", "ad_overlay", "burned_subtitles"],
+        "soft_subtitle_track": true
+      },
+      "pre_render_gate": {
+        "artifact": "qa/production_gate.json",
+        "status": "pass",
+        "conditions": ["ad_edit_gate=pass", "working_master_and_overlay_hashes_match=true", "translation_hash_matches=true", "voice_mapping_locked=true", "user_generate_full_command_matches_frozen_inputs=true", "automatic_dry_run_recorded=true", "all_tts_speed_1_0=true", "all_offline_rate_1_0=true", "chinese_tempo_filters=0", "chinese_overlap_count=0", "retime_source_coverage_complete=true", "retime_gaps=0", "retime_overlaps=0", "overlay_intervals_valid=true", "render_order=video_overlay_subtitles", "subtitle_timeline_rebuilt=true"]
+      },
+      "resume_from": "TTS manifest、逐批音频、视频区块和原音轨区块；已完成文件自动跳过"
+    },
+    {
+      "number": "08",
+      "id": "qa",
+      "title": "独立验收、发布包与交付",
+      "mode": "机器 + 人工",
+      "owner": "qc",
+      "co_owners": ["orchestrator"],
+      "summary": "质检 Agent 先证明成片完整；主控再生成无广告中文标题/简介、当前成片章节和双比例封面，通过发布包门禁后交用户最终确认。",
+      "tasks": ["复核 ad_edit_gate、translation_gate 与 production_gate 的状态及哈希链", "检查每个广告删除边界和遮盖区间", "确认字幕位于所有遮盖层之上", "ffprobe 流/时长/分辨率", "全片音视频解码", "帧数、DTS、字幕数、峰值与静音检查", "片头/中段/片尾抽帧抽听", "记录最终成片 SHA-256 并通过机器 QA", "翻译/改写自然中文标题和无广告简介", "按原视频→工作母版→当前中文成片重定位章节", "把标题、简介、重定位章节和片中书单输出为版本化 UTF-8 TXT 并完整贴到聊天框", "生成并检查 1920×1080 的 16:9 PNG 封面", "重新排版并检查 1440×1080 的 4:3 PNG 封面", "生成 qa/publication_materials_vN.json 与 qa/cover_art_vN.json", "生成并通过 qa/publication_package_gate_vN.json", "交用户最终人工确认"],
+      "inputs": ["最终 MP4", "最终机器 QA 报告", "翻译稿与术语/核名结果", "源标题/简介/章节", "用户提供且有权使用的封面参考或源视频帧", "qa/ad_edit_gate.json", "qa/ad_overlay_plan.json", "qa/translation_gate.json", "qa/production_gate.json", "qa/source_to_edit_timeline.json", "video_retime_plan"],
+      "outputs": ["execution_report.md", "最终成片", "SHA-256", "deliverables/<video_id>_发布材料_vN.txt", "deliverables/<video_id>_中文简介与章节_vN.txt", "deliverables/<video_id>_片中书单_vN.txt", "qa/chapter_timeline_vN.json", "qa/publication_materials_vN.json", "deliverables/covers/<video_id>_中文封面_16x9_vN.png", "deliverables/covers/<video_id>_中文封面_4x3_vN.png", "qa/cover_art_vN.json", "qa/publication_package_gate_vN.json", "可选网盘交付"],
+      "required_gate": {
+        "artifact": "qa/publication_package_gate_vN.json",
+        "status": "pass",
+        "conditions": ["final_machine_qa=pass", "final_media_sha256_matches=true", "publication_materials_qa=pass", "publication_text_format=utf8_txt_only", "publication_text_chat_echo_complete=true", "chapter_mapping_source_to_working_to_output_valid=true", "chapter_times_strictly_increasing=true", "chapter_count_matches=true", "promotional_links_remaining=0", "cover_art_qa=pass", "cover_16x9=1920x1080_png", "cover_4x3=1440x1080_png", "cover_text_and_identity_verified=true", "cover_advertising_residue=0", "all_artifact_hashes_match=true", "old_versions_preserved=true"]
+      },
+      "resume_from": "成片和验收报告；上传失败不需要重新渲染"
+    }
+  ]
+}

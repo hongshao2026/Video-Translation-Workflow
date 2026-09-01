@@ -1,0 +1,28 @@
+name: workflow-security-audit
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check repository contents
+        run: python scripts/audit_repository.py
+      - name: Check Python syntax and workflow JSON
+        run: |
+          python -c "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8'), filename=str(p)) for p in pathlib.Path('scripts').glob('*.py')]"
+          python -c "import json, pathlib; json.loads(pathlib.Path('docs/workflow.definition.json').read_text(encoding='utf-8'))"
+      - name: Smoke-test project initialization and workflow lock
+        run: |
+          python scripts/init_project.py PORTABLE_TEST --url https://example.com/video --source-language en --workspace "$RUNNER_TEMP"
+          python scripts/create_workflow_lock.py --run-dir "$RUNNER_TEMP/PORTABLE_TEST_run" --stage intake --next-gate format
+          python scripts/create_workflow_lock.py --run-dir "$RUNNER_TEMP/PORTABLE_TEST_run" --stage intake --next-gate format --check
