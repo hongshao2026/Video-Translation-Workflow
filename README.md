@@ -17,6 +17,8 @@
 - `docs/AD_DETECTION_AND_OVERLAY_SOP.md`：广告检测、自动决策、剪辑和遮盖规范。
 - `docs/YOUTUBE_1080P_DOWNLOAD_WORKFLOW.md`：高清源文件下载与验收 SOP。
 - `templates/PROJECT.template.md`：新视频项目模板。
+- `templates/CODEX_PROMPT.template.md`：可直接交给 Codex 的主控提示词模板。
+- `scripts/build_prompt.py`：接收视频链接和本机 Cookie 文件路径，自动校验、初始化项目并生成提示词。
 - `scripts/init_project.py`：创建本机运行目录。
 - `scripts/create_workflow_lock.py`：生成或核验工作流锁。
 - `scripts/audit_repository.py`：提交前检查敏感信息、媒体、大文件和项目数据。
@@ -32,7 +34,67 @@ python -m pip install -r requirements-core.txt
 python scripts/audit_repository.py
 ```
 
-初始化一条视频的本地运行目录：
+## 链接 + Cookie 自动生成提示词
+
+Cookie 不要上传到 GitHub，也不要把内容粘贴到 Codex。只需要在本机选择导出的 Netscape Cookie 文件，并把本机文件路径传给脚本：
+
+```powershell
+python scripts/build_prompt.py `
+  --url "https://www.youtube.com/watch?v=VIDEO_ID" `
+  --cookie-file "$env:USERPROFILE\Downloads\www.youtube.com_cookies.txt" `
+  --source-language en
+```
+
+这条命令会自动完成：
+
+1. 从普通链接、短链接、Shorts、Embed 或 Live 链接中提取视频 ID，并去掉播放列表和跟踪参数；
+2. 只检查 Cookie 文件是否存在、是否有 Netscape 标头和 `.youtube.com` 域名，不输出任何 Cookie 值；
+3. 首次运行时创建 `<video_id>_run/` 和 `PROJECT.md`；
+4. 生成 `<video_id>_run/CODEX_PROMPT.md`。
+
+`<video_id>_run/` 已被 `.gitignore` 排除，因此提示词里的本机 Cookie 路径、项目文件和后续所有媒体都不会上传。要同时在终端查看生成结果，可加 `--print`；要用新输入替换已有提示词，可加 `--force`。
+
+Windows 下可把生成的提示词复制到剪贴板：
+
+```powershell
+Get-Content -Raw .\VIDEO_ID_run\CODEX_PROMPT.md | Set-Clipboard
+```
+
+随后把剪贴板内容作为新任务发给 Codex。生成器已经把链接、Cookie 文件路径、运行目录、人工边界、安全规则和完成条件组合完整，不需要再手写长提示词。
+
+### 生成的主控提示词
+
+README 中保留下面这份可人工填写的版本；脚本实际使用的权威模板是 `templates/CODEX_PROMPT.template.md`：
+
+```text
+请在当前仓库内完整执行一条长视频中文译配任务。
+
+输入：
+- 视频链接：<视频链接>
+- 视频 ID：<视频 ID>
+- 源语言：<源语言或 auto>
+- 目标语言：zh-CN
+- 本机运行目录：<video_id>_run
+- YouTube Cookie 文件路径：<只写本机路径，不写 Cookie 内容>
+
+先完整读取 AGENTS.md、docs 下的全部强制工作流文件和当前 PROJECT.md。
+Cookie 已在本机提供，只验证文件、Netscape 标头和 youtube.com 域名，不输出值，
+也不要再次询问链接或 Cookie 内容。自动生成工作流锁并连续执行，仅在格式/原语言音轨、
+章节翻译稿、角色音色、最终观看和可选外部交付登录这些真正的人工关卡暂停。
+
+不请求版权确认；广告按证据自动删除、遮盖或保留；锁定音色后直接生成一分钟试听；
+试听后“生成全片/全文”指令直接授权当前冻结输入的全文 TTS 与渲染，自动 dry-run 后继续，
+不再二次确认。翻译使用独立 T 全文直译和独立 A/B 双全文审核。中文 TTS 固定原生 1.0，
+只通过画面重定时对轴。原始母版不覆盖，凭证、临时直链、媒体、QA 和成片不进入 Git。
+
+现在从安全验证输入与生成工作流锁开始。
+```
+
+这份提示词采用“目标 + 输入上下文 + 行动边界 + 成功条件”的紧凑结构，并把长期规则留在 `AGENTS.md`，避免在每次任务里重复整套说明。该做法与[官方 OpenAI 提示词建议](https://developers.openai.com/api/docs/guides/latest-model#prompting-best-practices)中“精简提示词、每条规则只写一次、明确自主执行与批准边界”的原则一致。
+
+### 仅手动初始化项目
+
+如果暂时没有 Cookie，也可以只创建本地运行目录：
 
 ```powershell
 python scripts/init_project.py VIDEO_ID `
@@ -40,21 +102,13 @@ python scripts/init_project.py VIDEO_ID `
   --source-language en
 ```
 
-该命令创建 `<video_id>_run/`。整个目录已被 `.gitignore` 排除，不会被上传。随后生成首个工作流锁：
+随后可手动生成首个工作流锁：
 
 ```powershell
 python scripts/create_workflow_lock.py `
   --run-dir .\VIDEO_ID_run `
   --stage intake `
   --next-gate format
-```
-
-在 Codex 中打开仓库并使用下面的执行请求即可：
-
-```text
-请完整读取 AGENTS.md、docs 下的全部强制工作流文件和 VIDEO_ID_run/PROJECT.md，
-严格按机器门禁与断点续跑规则处理这个视频。任何 Cookie、API Key、临时媒体直链、
-源媒体、音频、字幕成品、QA 运行记录和成片都不得提交到 Git。
 ```
 
 ## 执行器说明

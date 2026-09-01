@@ -36,14 +36,19 @@ def validate_inputs(video_id: str, source_url: str) -> None:
         raise SystemExit("--url must be a valid http(s) URL.")
 
 
-def main() -> int:
-    args = parse_args()
-    validate_inputs(args.video_id, args.url)
-
-    repo_root = Path(__file__).resolve().parents[1]
+def initialize_project(
+    video_id: str,
+    source_url: str,
+    source_language: str,
+    target_language: str,
+    workspace: Path,
+    repo_root: Path | None = None,
+) -> Path:
+    validate_inputs(video_id, source_url)
+    repo_root = repo_root or Path(__file__).resolve().parents[1]
     template_path = repo_root / "templates" / "PROJECT.template.md"
-    workspace = args.workspace.resolve()
-    run_dir = workspace / f"{args.video_id}_run"
+    workspace = workspace.resolve()
+    run_dir = workspace / f"{video_id}_run"
     project_path = run_dir / "PROJECT.md"
 
     if project_path.exists():
@@ -54,15 +59,27 @@ def main() -> int:
 
     rendered = template_path.read_text(encoding="utf-8")
     replacements = {
-        "{{VIDEO_ID}}": args.video_id,
-        "{{SOURCE_URL}}": args.url,
-        "{{SOURCE_LANGUAGE}}": args.source_language,
-        "{{TARGET_LANGUAGE}}": args.target_language,
+        "{{VIDEO_ID}}": video_id,
+        "{{SOURCE_URL}}": source_url,
+        "{{SOURCE_LANGUAGE}}": source_language,
+        "{{TARGET_LANGUAGE}}": target_language,
         "{{CREATED_AT}}": datetime.now(timezone.utc).isoformat(),
     }
     for marker, value in replacements.items():
         rendered = rendered.replace(marker, value)
     project_path.write_text(rendered, encoding="utf-8", newline="\n")
+    return run_dir
+
+
+def main() -> int:
+    args = parse_args()
+    run_dir = initialize_project(
+        video_id=args.video_id,
+        source_url=args.url,
+        source_language=args.source_language,
+        target_language=args.target_language,
+        workspace=args.workspace,
+    )
 
     print(f"Initialized local run directory: {run_dir}")
     print("Next: create qa/workflow_lock.json with scripts/create_workflow_lock.py")

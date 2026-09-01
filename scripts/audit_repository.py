@@ -35,6 +35,7 @@ SENSITIVE_CONTENT_PATTERNS = (
     ("AWS access key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("Bearer credential", re.compile(r"Authorization\s*:\s*Bearer\s+[A-Za-z0-9._~+/=-]{12,}", re.IGNORECASE)),
     ("signed media URL", re.compile(r"https?://[^\s]+googlevideo\.com/[^\s]+", re.IGNORECASE)),
+    ("YouTube Netscape Cookie row", re.compile(r"(?m)^(?:#HttpOnly_)?\.?youtube\.com\t(?:TRUE|FALSE)\t", re.IGNORECASE)),
     ("personal Windows path", re.compile(r"[A-Za-z]:\\Users\\(?!<|\$env:USERPROFILE)[^\\\s]+\\", re.IGNORECASE)),
     ("personal macOS path", re.compile(re.escape("/" + "Users/") + r"(?!<)[^/\s]+/")),
     ("personal Linux path", re.compile(re.escape("/" + "home/") + r"(?!<)[^/\s]+/")),

@@ -21,8 +21,14 @@ jobs:
         run: |
           python -c "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8'), filename=str(p)) for p in pathlib.Path('scripts').glob('*.py')]"
           python -c "import json, pathlib; json.loads(pathlib.Path('docs/workflow.definition.json').read_text(encoding='utf-8'))"
+          python -m unittest discover -s tests -v
       - name: Smoke-test project initialization and workflow lock
         run: |
           python scripts/init_project.py PORTABLE_TEST --url https://example.com/video --source-language en --workspace "$RUNNER_TEMP"
           python scripts/create_workflow_lock.py --run-dir "$RUNNER_TEMP/PORTABLE_TEST_run" --stage intake --next-gate format
           python scripts/create_workflow_lock.py --run-dir "$RUNNER_TEMP/PORTABLE_TEST_run" --stage intake --next-gate format --check
+      - name: Smoke-test URL and Cookie prompt builder
+        run: |
+          python -c "import os, pathlib; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'netscape-input.txt'; p.write_text('# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST_NAME\tTEST_VALUE\n', encoding='utf-8')"
+          python scripts/build_prompt.py --url https://youtu.be/PORTABLE_TEST --cookie-file "$RUNNER_TEMP/netscape-input.txt" --source-language en --workspace "$RUNNER_TEMP" --force
+          test -f "$RUNNER_TEMP/PORTABLE_TEST_run/CODEX_PROMPT.md"
