@@ -24,6 +24,7 @@ POLICIES = {
     "translation_review": "two_independent_agents_full_coverage",
     "chapter_reading_review": "required_before_translation_gate",
     "chapter_reading_layout": "sentence_aligned_verbatim",
+    "translation_approval": "explicit_downstream_command_binds_current_version",
     "chinese_tts_speed": 1.0,
     "chinese_offline_rate": 1.0,
     "sync_strategy": "video_retime_only",

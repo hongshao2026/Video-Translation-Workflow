@@ -77,6 +77,8 @@ class PromptBuilderTests(unittest.TestCase):
             self.assertNotIn("TEST_VALUE", result.stdout)
             self.assertIn("media_format_selection_vN.json", prompt)
             self.assertIn("不请求格式组合确认", prompt)
+            self.assertIn("explicit_downstream_command", prompt)
+            self.assertIn("不要求用户复制 SHA", prompt)
 
     def test_format_selection_is_automatic_not_a_manual_gate(self) -> None:
         definition = json.loads(
@@ -94,6 +96,18 @@ class PromptBuilderTests(unittest.TestCase):
             "manual_approval_required=false",
             acquire["automatic_format_gate"]["conditions"],
         )
+
+    def test_downstream_voice_command_binds_translation_approval(self) -> None:
+        definition = json.loads(
+            (REPO_ROOT / "docs" / "workflow.definition.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(definition["schema_version"], 9)
+
+        audit = next(stage for stage in definition["stages"] if stage["id"] == "audit")
+        conditions = set(audit["required_gate"]["conditions"])
+        self.assertIn("approval_capture_mode=explicit_downstream_command", conditions)
+        self.assertIn("manual_hash_repetition_required=false", conditions)
+        self.assertIn("不追加批准问答", "".join(audit["tasks"]))
 
 
 if __name__ == "__main__":

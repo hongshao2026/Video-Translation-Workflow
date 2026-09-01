@@ -18,6 +18,7 @@
 - `translation_review=two_independent_agents_full_coverage`
 - `chapter_reading_review=required_before_translation_gate`
 - `chapter_reading_layout=sentence_aligned_verbatim`
+- `translation_approval=explicit_downstream_command_binds_current_version`
 - `chinese_tts_speed=1.0`
 - `chinese_offline_rate=1.0`
 - `sync_strategy=video_retime_only`
@@ -29,7 +30,7 @@
 - `publication_text_format=utf8_txt_only`
 - `cover_variants=16x9_and_4x3`
 
-版权/权限确认不设执行门禁。格式探测通过后按冻结规则自动选择画面和原语言音轨并直接下载，不请求格式组合确认。广告按证据自动 `remove`、`mask` 或 `keep`；证据不足时保留。角色与音色锁定后可直接生成一分钟试听。试听后用户发出“生成全片”“生成全文”或等价指令，即授权当前冻结输入的全文付费 TTS 与渲染；自动 dry-run 通过后直接继续，不再二次确认。
+版权/权限确认不设执行门禁。格式探测通过后按冻结规则自动选择画面和原语言音轨并直接下载，不请求格式组合确认。章节阅读稿展示后，“开始选音色”“启动工作台”“进入选音”等明确下游指令自动批准当前展示版本；主控自行绑定实际哈希并生成批准记录与翻译门禁，不要求用户复制 SHA 或重复确认。广告按证据自动 `remove`、`mask` 或 `keep`；证据不足时保留。角色与音色锁定后可直接生成一分钟试听。试听后用户发出“生成全片”“生成全文”或等价指令，即授权当前冻结输入的全文付费 TTS 与渲染；自动 dry-run 通过后直接继续，不再二次确认。
 
 ## 当前设备
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "name": "外语长视频中文译配工作流",
   "summary": "从公开视频链接到时间轴对齐、保留原画质、带中文字幕的中文配音成片，并生成无广告中文发布文案、最终章节和双比例封面。",
   "team": {
@@ -25,8 +25,8 @@
     "原始下载母版不得覆盖；正式工作母版之外的时间差必须有原时轴到新时轴映射。",
     "广告遮盖只在分析确认的区间内生效，渲染顺序固定为视频→遮盖→字幕，字幕必须在最上层。",
     "默认采用质量优先模式：独立 Agent T 不参考本地旧译稿，直接根据冻结源文和术语表翻译全文。",
-    "Agent T 候选稿冻结后，必须由两个与 T 和主控不同的独立审核 Agent A/B 各自覆盖全文，再由主控合并裁决并取得用户批准。",
-    "主控裁决和回归后必须按章节生成中文阅读稿；阅读稿完整且唯一覆盖全部稳定 ID、逐字使用正式 subtitle_zh，并由用户批准绑定的阅读稿与正式翻译哈希，之后 translation_gate 才能 pass。",
+    "Agent T 候选稿冻结后，必须由两个与 T 和主控不同的独立审核 Agent A/B 各自覆盖全文，再由主控合并裁决并生成章节阅读稿供用户通读。",
+    "章节阅读稿完整且唯一覆盖全部稳定 ID、逐字使用正式 subtitle_zh；当前版本完整展示且无待决修改时，用户发出的开始选音色、启动工作台或等价明确下游指令自动批准当前版本，主控自行绑定实际哈希并生成 translation_gate，不得追加批准问答。",
     "章节阅读稿默认采用 chapter_reading_layout=sentence_aligned_verbatim：同一章节内连续拼接相邻稳定槽，只在完整句末或章节结束处分段；稳定 ID 内联不可见且完整唯一有序，每槽 subtitle_zh 必须可逐字重建，章节可见正文不得增删，禁止跨章节移动稳定 ID。",
     "本地 Ollama/Qwen 仅可辅助结构、数字、错位、漏译或争议句检查，不得生成默认候选稿或替代 T/A/B。",
     "没有 qa/translation_gate.json 的 pass 状态或输入哈希不匹配时，角色识别、选音和 TTS 均锁定。",
@@ -193,9 +193,9 @@
     },
     {
       "id": "translation",
-      "label": "通读按章节中文阅读稿，并批准其绑定的最终翻译 JSON / SRT 版本",
+      "label": "通读按章节中文阅读稿；提出修改或直接发出明确下游执行指令",
       "stage": "05",
-      "why": "只有 Agent T 完成源文直译、两个独立审核 Agent A/B 均覆盖全文、主控完成裁决与回归，再生成完整且唯一覆盖全部槽位的章节阅读稿，并取得绑定阅读稿与正式翻译哈希的用户批准，才能生成 translation_gate=pass 并解锁角色、选音与正式付费配音。",
+      "why": "只有 Agent T 完成源文直译、两个独立审核 Agent A/B 均覆盖全文、主控完成裁决与回归并生成完整且唯一覆盖全部槽位的章节阅读稿后才能放行。用户在当前版本展示后发出的明确选音/工作台指令自动批准该版本；主控负责绑定哈希，不得让用户复制 SHA 或重复说批准。",
       "sensitive": false
     },
     {
@@ -235,7 +235,7 @@
       "required_gate": {
         "artifact": "qa/workflow_lock.json",
         "status": "pass",
-        "conditions": ["required_document_hashes_complete=true", "media_format_selection=automatic_after_probe", "ad_policy=detect_then_apply_evidence_based", "translation_mode=codex_agent_direct_quality_first", "translation_review=two_independent_agents_full_coverage", "chapter_reading_review=required_before_translation_gate", "chapter_reading_layout=sentence_aligned_verbatim", "chinese_tts_speed=1.0", "chinese_offline_rate=1.0", "sync_strategy=video_retime_only", "preserve_all_formal_working_master_frames=true", "subtitle_timeline=rebuilt_from_chinese_audio", "audition_authorization=voice_selection_implies_audition", "full_tts_authorization=user_generate_full_command", "publication_package=required_after_final_machine_qa", "publication_text_format=utf8_txt_only", "cover_variants=16x9_and_4x3"]
+        "conditions": ["required_document_hashes_complete=true", "media_format_selection=automatic_after_probe", "ad_policy=detect_then_apply_evidence_based", "translation_mode=codex_agent_direct_quality_first", "translation_review=two_independent_agents_full_coverage", "chapter_reading_review=required_before_translation_gate", "chapter_reading_layout=sentence_aligned_verbatim", "translation_approval=explicit_downstream_command_binds_current_version", "chinese_tts_speed=1.0", "chinese_offline_rate=1.0", "sync_strategy=video_retime_only", "preserve_all_formal_working_master_frames=true", "subtitle_timeline=rebuilt_from_chinese_audio", "audition_authorization=voice_selection_implies_audition", "full_tts_authorization=user_generate_full_command", "publication_package=required_after_final_machine_qa", "publication_text_format=utf8_txt_only", "cover_variants=16x9_and_4x3"]
       },
       "resume_from": "项目目录与冻结的输入记录"
     },
@@ -293,17 +293,17 @@
       "number": "05",
       "id": "audit",
       "title": "双 Agent 独立全文审核、章节阅读稿与翻译放行",
-      "mode": "并行审核 + 人工章节阅读关卡",
+      "mode": "并行审核 + 章节通读 + 下游指令自动批准",
       "owner": "reviewer_a",
       "co_owners": ["reviewer_b", "orchestrator"],
-      "summary": "在 Agent T 候选稿冻结后，两个与 T/主控不同的审核 Agent 独立覆盖全文；主控合并、逐条裁决并回归，再按章节生成中文阅读稿，暂停供用户通读并批准绑定哈希的正式配音稿。",
-      "tasks": ["核验 Agent T manifest 与全文覆盖", "Agent A：中文表达与上下文", "Agent B：语义忠实与专业性", "核验 T/A/B/主控角色互不重复", "主控：合并去重、裁决与落盘", "结构、术语、数字、待定项回归", "按用户/源章节或生成的候选章节组织正式 subtitle_zh", "按 sentence_aligned_verbatim 在同一章节内把跨槽片段连续排成完整句子", "映射原章节到正式工作母版时轴并保留原时轴", "验证全部稳定 ID 完整且唯一覆盖、每槽文本逐字可重建、可见正文无增删、非章节末句中换段为 0", "暂停并交付章节阅读稿供用户通读", "记录绑定阅读稿与正式翻译哈希的用户批准"],
+      "summary": "在 Agent T 候选稿冻结后，两个与 T/主控不同的审核 Agent 独立覆盖全文；主控合并、逐条裁决并回归，再按章节生成中文阅读稿供用户通读。用户发出明确选音/工作台指令时，主控自动绑定当前哈希、生成批准记录和门禁并直接进入下游阶段。",
+      "tasks": ["核验 Agent T manifest 与全文覆盖", "Agent A：中文表达与上下文", "Agent B：语义忠实与专业性", "核验 T/A/B/主控角色互不重复", "主控：合并去重、裁决与落盘", "结构、术语、数字、待定项回归", "按用户/源章节或生成的候选章节组织正式 subtitle_zh", "按 sentence_aligned_verbatim 在同一章节内把跨槽片段连续排成完整句子", "映射原章节到正式工作母版时轴并保留原时轴", "验证全部稳定 ID 完整且唯一覆盖、每槽文本逐字可重建、可见正文无增删、非章节末句中换段为 0", "暂停并交付章节阅读稿供用户通读", "用户提出修改则回到裁决；用户发出明确下游指令则自动批准当前版本", "主控自行绑定阅读稿与正式翻译哈希并生成 translation_approval 与 translation_gate，不追加批准问答"],
       "inputs": ["qa/translation_agent_t_manifest_vN.json", "冻结的 Agent T 候选翻译", "源文与前后文", "统一术语表", "用户或源视频章节；缺失时为记录来源的候选章节", "qa/source_to_edit_timeline.json"],
       "outputs": ["translation_final_vN.json / .srt", "两份独立全文审核报告", "裁决与回归记录", "deliverables/<video_id>_中文阅读版_按章节_vN.md", "qa/chapter_reading_validation_vN.json", "qa/translation_approval_vN.json", "qa/translation_gate.json"],
       "required_gate": {
         "artifact": "qa/translation_gate.json",
         "status": "pass",
-        "conditions": ["mode=codex_agent_direct_quality_first", "translator_missing_ids=0", "translator_source_and_glossary_hashes_match=true", "translator_manifest_hash_recorded=true", "translator_reviewer_roles_distinct=true", "reviewer_a_missing_ids=0", "reviewer_b_missing_ids=0", "same_candidate_sha256=true", "all_report_hashes_recorded=true", "unresolved_high=0", "unresolved_total=0", "regression_status=pass", "chapter_reading_validation=pass", "chapter_reading_layout=sentence_aligned_verbatim", "chapter_reading_missing_slots=0", "chapter_reading_duplicate_slots=0", "chapter_reading_subtitle_text_used_verbatim=true", "chapter_reading_subtitle_text_reconstructable=true", "chapter_reading_visible_text_insertions_or_deletions=0", "chapter_reading_nonterminal_nonchapter_final_line_breaks=0", "chapter_reading_and_final_translation_hashes_recorded=true", "user_approval_hashes_match=true", "user_approved=true"]
+        "conditions": ["mode=codex_agent_direct_quality_first", "translator_missing_ids=0", "translator_source_and_glossary_hashes_match=true", "translator_manifest_hash_recorded=true", "translator_reviewer_roles_distinct=true", "reviewer_a_missing_ids=0", "reviewer_b_missing_ids=0", "same_candidate_sha256=true", "all_report_hashes_recorded=true", "unresolved_high=0", "unresolved_total=0", "regression_status=pass", "chapter_reading_validation=pass", "chapter_reading_layout=sentence_aligned_verbatim", "chapter_reading_missing_slots=0", "chapter_reading_duplicate_slots=0", "chapter_reading_subtitle_text_used_verbatim=true", "chapter_reading_subtitle_text_reconstructable=true", "chapter_reading_visible_text_insertions_or_deletions=0", "chapter_reading_nonterminal_nonchapter_final_line_breaks=0", "chapter_reading_and_final_translation_hashes_recorded=true", "approval_capture_mode=explicit_downstream_command", "manual_hash_repetition_required=false", "user_approval_hashes_match=true", "user_approved=true"]
       },
       "resume_from": "Agent T manifest + 冻结候选稿 + 两份独立报告 + 章节阅读稿验证；任何翻译或章节映射修改都生成新阅读稿并重新请求批准"
     },
