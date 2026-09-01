@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -74,6 +75,25 @@ class PromptBuilderTests(unittest.TestCase):
             self.assertNotIn("TEST_NAME", prompt)
             self.assertNotIn("TEST_VALUE", prompt)
             self.assertNotIn("TEST_VALUE", result.stdout)
+            self.assertIn("media_format_selection_vN.json", prompt)
+            self.assertIn("不请求格式组合确认", prompt)
+
+    def test_format_selection_is_automatic_not_a_manual_gate(self) -> None:
+        definition = json.loads(
+            (REPO_ROOT / "docs" / "workflow.definition.json").read_text(encoding="utf-8")
+        )
+        manual_gate_ids = {gate["id"] for gate in definition["manual_gates"]}
+        self.assertNotIn("format", manual_gate_ids)
+
+        acquire = next(stage for stage in definition["stages"] if stage["id"] == "acquire")
+        self.assertEqual(
+            acquire["automatic_format_gate"]["artifact"],
+            "qa/media_format_selection_vN.json",
+        )
+        self.assertIn(
+            "manual_approval_required=false",
+            acquire["automatic_format_gate"]["conditions"],
+        )
 
 
 if __name__ == "__main__":

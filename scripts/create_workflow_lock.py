@@ -18,6 +18,7 @@ REQUIRED_DOCUMENTS = (
 )
 
 POLICIES = {
+    "media_format_selection": "automatic_after_probe",
     "ad_policy": "detect_then_apply_evidence_based",
     "translation_mode": "codex_agent_direct_quality_first",
     "translation_review": "two_independent_agents_full_coverage",

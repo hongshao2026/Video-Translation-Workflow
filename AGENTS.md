@@ -10,10 +10,11 @@
 
 如当前项目另有冻结稿、术语表、音色交接或人工决定，以用户对当前项目的最新明确决定为最高优先级。不得凭旧项目默认值覆盖当前项目决定。
 
-开始执行前，主控必须生成 `<video_id>_run/qa/workflow_lock.json`，写明上述文件的路径、版本或 SHA-256，并列出本次项目的冻结输入、当前阶段、下一道放行门以及 `ad_policy=detect_then_apply_evidence_based`、`translation_mode=codex_agent_direct_quality_first`、`translation_review=two_independent_agents_full_coverage`、`chapter_reading_review=required_before_translation_gate`、`chapter_reading_layout=sentence_aligned_verbatim`、`chinese_tts_speed=1.0`、`sync_strategy=video_retime_only`、`preserve_all_formal_working_master_frames=true`、`audition_authorization=voice_selection_implies_audition`、`full_tts_authorization=user_generate_full_command`、`publication_package=required_after_final_machine_qa`、`publication_text_format=utf8_txt_only`、`cover_variants=16x9_and_4x3`。没有状态为 `pass` 的工作流锁，不得开始翻译、付费 TTS、渲染或正式发布包生成。用户在音色锁定后说“生成全片”“生成全文”或等价执行口令，即视为对当前冻结翻译、角色、音色和 TTS 参数的全文付费 TTS 与渲染授权；自动 dry-run 通过后直接继续，不得再请求费用或生成确认。
+开始执行前，主控必须生成 `<video_id>_run/qa/workflow_lock.json`，写明上述文件的路径、版本或 SHA-256，并列出本次项目的冻结输入、当前阶段、下一道放行门以及 `media_format_selection=automatic_after_probe`、`ad_policy=detect_then_apply_evidence_based`、`translation_mode=codex_agent_direct_quality_first`、`translation_review=two_independent_agents_full_coverage`、`chapter_reading_review=required_before_translation_gate`、`chapter_reading_layout=sentence_aligned_verbatim`、`chinese_tts_speed=1.0`、`sync_strategy=video_retime_only`、`preserve_all_formal_working_master_frames=true`、`audition_authorization=voice_selection_implies_audition`、`full_tts_authorization=user_generate_full_command`、`publication_package=required_after_final_machine_qa`、`publication_text_format=utf8_txt_only`、`cover_variants=16x9_and_4x3`。没有状态为 `pass` 的工作流锁，不得开始翻译、付费 TTS、渲染或正式发布包生成。用户在音色锁定后说“生成全片”“生成全文”或等价执行口令，即视为对当前冻结翻译、角色、音色和 TTS 参数的全文付费 TTS 与渲染授权；自动 dry-run 通过后直接继续，不得再请求费用或生成确认。
 
 ## 不可违反的生产规则
 
+- Cookie 文件路径由用户在立项时提供一次；`yt-dlp -F` 与格式探测 QA 通过后，必须按冻结的源语言、原声标记、真实分辨率、编码兼容性和码率优先级自动选择画面与音频格式，写入 `qa/media_format_selection_vN.json` 后直接下载。不得要求用户回复格式编号或组合。多音轨元数据冲突时先自动做短片段语言验证；仍无法判定则以机器门禁失败报告“待修复”，不得改成人工格式批准关卡。
 - 冻结正式时间槽前必须同时检测“可整段删除的口播/赞助内容”和“需要遮盖的画面广告、二维码、促销框或角标”。检测结果、证据时间点、置信度和处置理由写入 QA；根据证据自动执行：独立口播/赞助段删除，不宜删除的画面广告定时定位遮盖，非广告内容保留。不再逐项等待用户批准。
 - 广告处理后必须保留未经修改的下载母版，另建去广告/遮盖工作母版，并记录原时轴到新时轴映射。进入翻译前必须存在状态为 `pass` 的 `qa/ad_edit_gate.json`；即使未检测到广告，也要以 `no_ads_detected` 自动放行。
 - 画面广告遮盖必须按检测证据验证通过的时间区间和坐标执行，不得全片误盖。渲染层级固定为“视频画面 → 广告遮盖 → 烧录字幕”；字幕必须在最上层，不能被遮盖框、角标或其他叠加层挡住。软字幕仍须保留为独立字幕轨。

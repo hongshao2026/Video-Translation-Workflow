@@ -67,13 +67,14 @@ T、A、B 和主控必须是不同角色。Agent T 可以按连续 ID 分批翻�
 | 关卡 | 必须由人做的决定 | Agent 可以做的准备 |
 |---|---|---|
 | Cookie | 在目标 YouTube 页面导出 Netscape Cookie；只给出本机文件路径 | 只检查域名是否含 `.youtube.com`，不打印 Cookie 值 |
-| 格式/语言 | 确认最高真实画质、编码和正确的原语言音轨 | 运行 `yt-dlp -F` 并给出候选组合 |
 | 翻译放行 | 阅读按章节排版的全文中文稿，并批准与其哈希绑定的 `translation_final_vN.json/.srt` 为正式配音输入 | Agent T 直接全文翻译，两个审核 Agent 全文独立检查，主控合并、终检并生成章节阅读稿 |
 | 音色 | 为每个角色选择声音并锁定映射 | 角色聚类、推荐候选、缓存试听文件；映射锁定后直接生成一分钟试听，不再单独请求费用或生成批准 |
 | 最终观看 | 抽看片头、中段、片尾、高风险句和角色切换，并确认发布标题、简介、章节和两张封面 | 输出机器验收报告、抽查时间点、可播放文件和已通过发布包门禁的文案/封面 |
 | 外部交付 | 如需网盘，由账号本人登录并确认目标目录 | 上传已批准的最终成片；失败只重传，不重渲染 |
 
 Cookie 与 API Key 都是敏感凭证：不粘贴到聊天、不写进文档、不进入 Git、不出现在命令输出。API Key 只通过进程环境变量、系统密钥链、后端内存或仓库外凭证文件提供。
+
+下载格式与原语言音轨不再是人工关卡。媒体 Agent 在 `yt-dlp -F` 和格式探测 QA 通过后，按冻结的源语言、`original (default)` 标记、真实分辨率、项目目标规格、编码/容器兼容性、帧率与码率自动排序，生成 `qa/media_format_selection_vN.json` 并直接下载。不得要求用户回复格式编号或组合；多音轨元数据冲突时先自动下载短探针并做语言验证，仍无法判定则记录机器门禁失败并报告“待修复”。
 
 ## 5. 目录约定
 
@@ -125,6 +126,7 @@ Cookie 与 API Key 都是敏感凭证：不粘贴到聊天、不写进文档、�
 
 ```text
 ad_policy = detect_then_apply_evidence_based
+media_format_selection = automatic_after_probe
 translation_mode = codex_agent_direct_quality_first
 translation_review = two_independent_agents_full_coverage
 chapter_reading_review = required_before_translation_gate
@@ -151,7 +153,7 @@ cover_variants = 16x9_and_4x3
 ```text
 人工：目标视频页导出 Cookie
 → 媒体 Agent：yt-dlp -F
-→ 人工：批准画面格式和原语言音轨
+→ 媒体 Agent：自动选择画面格式和原语言音轨并记录 QA
 → 媒体 Agent：下载独立画面/音频
 → FFmpeg -c copy 合并
 → ffprobe + 全片解码 + SHA-256
@@ -163,7 +165,9 @@ Cookie 文件只传路径，例如：
 $env:USERPROFILE\Downloads\www.youtube.com_cookies.txt
 ```
 
-完成标志：`source/` 中有通过全片解码的高清 MP4，音轨语言与分辨率已确认，哈希已记录。
+自动选择规则：先满足项目目标分辨率和源语言；同分辨率优先剪辑兼容的 MP4/H.264 画面与 M4A/AAC 原声，再比较帧率和码率。若更高真实分辨率只提供 VP9/AV1，保留最高画质下载母版，并在需要时另建兼容工作副本，不以人工确认代替自动决策。格式探测、候选排序、选中编号、语言证据和选择理由必须写入 `qa/media_format_selection_vN.json`。
+
+完成标志：`qa/media_format_selection_vN.json.status == "pass"`，且 `source/` 中有通过全片解码的高清 MP4，音轨语言与分辨率已确认，哈希已记录。
 
 恢复策略：
 

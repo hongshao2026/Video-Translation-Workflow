@@ -1,5 +1,5 @@
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "name": "外语长视频中文译配工作流",
   "summary": "从公开视频链接到时间轴对齐、保留原画质、带中文字幕的中文配音成片，并生成无广告中文发布文案、最终章节和双比例封面。",
   "team": {
@@ -20,6 +20,7 @@
     "<video_id>_run/PROJECT.md"
   ],
   "global_hard_rules": [
+    "格式探测 QA 通过后，按冻结的源语言、原声标记、真实分辨率、编码兼容性、帧率和码率自动选择画面与音频格式，记录 media_format_selection=pass 后直接下载，不请求人工格式批准。",
     "冻结正式时间槽前必须检测内容广告和画面广告；按冻结的多证据规则自动决定删除、遮盖或保留，不再逐项请求用户批准，并生成 ad_edit_gate=pass。",
     "原始下载母版不得覆盖；正式工作母版之外的时间差必须有原时轴到新时轴映射。",
     "广告遮盖只在分析确认的区间内生效，渲染顺序固定为视频→遮盖→字幕，字幕必须在最上层。",
@@ -191,13 +192,6 @@
       "sensitive": true
     },
     {
-      "id": "format",
-      "label": "确认最高画质和正确的原语言音轨",
-      "stage": "02",
-      "why": "格式编号和多语言音轨每条视频都不同，不能硬编码。",
-      "sensitive": false
-    },
-    {
       "id": "translation",
       "label": "通读按章节中文阅读稿，并批准其绑定的最终翻译 JSON / SRT 版本",
       "stage": "05",
@@ -241,7 +235,7 @@
       "required_gate": {
         "artifact": "qa/workflow_lock.json",
         "status": "pass",
-        "conditions": ["required_document_hashes_complete=true", "ad_policy=detect_then_apply_evidence_based", "translation_mode=codex_agent_direct_quality_first", "translation_review=two_independent_agents_full_coverage", "chapter_reading_review=required_before_translation_gate", "chapter_reading_layout=sentence_aligned_verbatim", "chinese_tts_speed=1.0", "chinese_offline_rate=1.0", "sync_strategy=video_retime_only", "preserve_all_formal_working_master_frames=true", "subtitle_timeline=rebuilt_from_chinese_audio", "audition_authorization=voice_selection_implies_audition", "full_tts_authorization=user_generate_full_command", "publication_package=required_after_final_machine_qa", "publication_text_format=utf8_txt_only", "cover_variants=16x9_and_4x3"]
+        "conditions": ["required_document_hashes_complete=true", "media_format_selection=automatic_after_probe", "ad_policy=detect_then_apply_evidence_based", "translation_mode=codex_agent_direct_quality_first", "translation_review=two_independent_agents_full_coverage", "chapter_reading_review=required_before_translation_gate", "chapter_reading_layout=sentence_aligned_verbatim", "chinese_tts_speed=1.0", "chinese_offline_rate=1.0", "sync_strategy=video_retime_only", "preserve_all_formal_working_master_frames=true", "subtitle_timeline=rebuilt_from_chinese_audio", "audition_authorization=voice_selection_implies_audition", "full_tts_authorization=user_generate_full_command", "publication_package=required_after_final_machine_qa", "publication_text_format=utf8_txt_only", "cover_variants=16x9_and_4x3"]
       },
       "resume_from": "项目目录与冻结的输入记录"
     },
@@ -249,12 +243,17 @@
       "number": "02",
       "id": "acquire",
       "title": "高清下载与源文件验收",
-      "mode": "人机协作",
+      "mode": "用户提供 Cookie + 自动执行",
       "owner": "media",
-      "summary": "人工提供 Cookie 与格式决策，Agent 下载画面/原声、无重编码合并并全片解码。",
-      "tasks": ["yt-dlp -F 查询格式", "并行下载 video-only / audio-only", "FFmpeg -c copy 合并", "ffprobe、全片解码与 SHA-256"],
-      "inputs": ["链接", "Cookie 文件路径", "已批准的视频/音频格式编号"],
-      "outputs": ["source/youtube_high_quality.mp4", "源文件探测记录与哈希"],
+      "summary": "用户只提供本机 Cookie 路径；Agent 查询格式、自动选择画面与原声、下载、无重编码合并并全片解码，不等待格式批准。",
+      "tasks": ["yt-dlp -F 查询格式", "按源语言、原声标记、真实分辨率、编码兼容性、帧率与码率自动排序", "必要时用短探针自动验证多音轨语言", "生成 qa/media_format_selection_vN.json", "并行下载 video-only / audio-only", "FFmpeg -c copy 合并", "ffprobe、全片解码与 SHA-256"],
+      "inputs": ["链接", "Cookie 文件路径", "冻结的源语言与目标规格"],
+      "outputs": ["qa/media_format_selection_vN.json", "source/youtube_high_quality.mp4", "源文件探测记录与哈希"],
+      "automatic_format_gate": {
+        "artifact": "qa/media_format_selection_vN.json",
+        "status": "pass",
+        "conditions": ["format_probe_pass=true", "selected_video_format_recorded=true", "selected_audio_format_recorded=true", "source_language_verified=true", "selection_policy=source_language_resolution_compatibility_fps_bitrate", "manual_approval_required=false"]
+      },
       "resume_from": "已完成的独立画面/音频文件；直链过期时只重新取直链"
     },
     {

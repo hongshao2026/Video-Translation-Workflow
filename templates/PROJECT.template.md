@@ -12,6 +12,7 @@
 
 ## 强制生产策略
 
+- `media_format_selection=automatic_after_probe`
 - `ad_policy=detect_then_apply_evidence_based`
 - `translation_mode=codex_agent_direct_quality_first`
 - `translation_review=two_independent_agents_full_coverage`
@@ -28,7 +29,7 @@
 - `publication_text_format=utf8_txt_only`
 - `cover_variants=16x9_and_4x3`
 
-版权/权限确认不设执行门禁。广告按证据自动 `remove`、`mask` 或 `keep`；证据不足时保留。角色与音色锁定后可直接生成一分钟试听。试听后用户发出“生成全片”“生成全文”或等价指令，即授权当前冻结输入的全文付费 TTS 与渲染；自动 dry-run 通过后直接继续，不再二次确认。
+版权/权限确认不设执行门禁。格式探测通过后按冻结规则自动选择画面和原语言音轨并直接下载，不请求格式组合确认。广告按证据自动 `remove`、`mask` 或 `keep`；证据不足时保留。角色与音色锁定后可直接生成一分钟试听。试听后用户发出“生成全片”“生成全文”或等价指令，即授权当前冻结输入的全文付费 TTS 与渲染；自动 dry-run 通过后直接继续，不再二次确认。
 
 ## 当前设备
 
@@ -46,8 +47,8 @@
 ## 当前状态
 
 - 当前阶段：`intake`
-- 下一道放行门：`format`
+- 下一道放行门：`workflow_lock`
 - 已完成：项目目录初始化。
-- 待完成：生成并通过 `qa/workflow_lock.json`，然后查询当前视频的格式与原语言音轨。
+- 待完成：生成并通过 `qa/workflow_lock.json`，然后自动查询、选择当前视频的格式与原语言音轨并继续下载。
 
 > 本节仅记录进度。只修改本节时不改变冻结约束哈希，也不要求重新生成工作流锁。
