@@ -57,6 +57,8 @@ jobs:
           python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
           npm ci
       - name: Python quality and tests
+        env:
+          DUB_CREDENTIAL_BACKEND: memory
         run: |
           python -m ruff check .
           python -m pip check
