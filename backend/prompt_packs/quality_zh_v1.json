@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "quality-zh-v1",
+  "name": "质量优先中文译配",
+  "version": 1,
+  "locked": true,
+  "editable_fields": [
+    "project_context",
+    "glossary",
+    "style_preferences",
+    "recording_replacements"
+  ],
+  "common_policy": [
+    "保留全部稳定 ID，禁止新增、删除、重排或合并字幕槽。",
+    "语义准确优先于时长；不得为了原时间槽压缩事实、逻辑、限定条件或语气。",
+    "外文人名默认保留经核定的拉丁字母拼写。",
+    "输出必须通过当前角色对应的 JSON Schema。"
+  ],
+  "roles": {
+    "T": {
+      "purpose": "直接根据冻结源文、上下文、说话人和术语表生成全文中文候选稿。",
+      "isolation": "不得读取历史中文候选或审核报告。"
+    },
+    "A": {
+      "purpose": "独立全文检查中文表达、上下文、衔接、口语自然度与朗读可读性。",
+      "isolation": "不得读取审核 B 的报告，不得直接改写冻结候选。"
+    },
+    "B": {
+      "purpose": "独立全文检查忠实度、数字、否定、主客体、专名、术语与专业逻辑。",
+      "isolation": "不得读取审核 A 的报告，不得直接改写冻结候选。"
+    },
+    "C": {
+      "purpose": "在 A、B 均完成后对全部问题提出语义裁决建议。",
+      "isolation": "不得控制文件、授权或机器门禁。"
+    }
+  },
+  "fallback_policy": "manual",
+  "output_schema_version": 1
+}

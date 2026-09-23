@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "status": "pass",
+  "tested_at_utc": "2026-09-23T02:21:00.246854+00:00",
+  "finished_at_utc": "2026-09-23T02:21:35.638635+00:00",
+  "region": "cn",
+  "credential_material_recorded": false,
+  "automatic_retries": 0,
+  "published_or_uploaded_media": false,
+  "non_generating_probes": {
+    "models": {
+      "status": "pass",
+      "count": 8
+    },
+    "voices": {
+      "status": "pass",
+      "count": 303
+    }
+  },
+  "minimal_llm_generation": {
+    "status": "pass",
+    "model": "MiniMax-M3",
+    "output_tokens": 16,
+    "response_sha256": "eb006728094b93f46f6f9edff315fb635ae4d87e9378db6b37227d9e54943003"
+  },
+  "minimal_speech_generation": {
+    "status": "pass",
+    "model": "speech-2.8-turbo",
+    "voice": "Chinese (Mandarin)_Reliable_Executive",
+    "speed": 1.0,
+    "audio_format": "mp3",
+    "audio_bytes": 14964,
+    "audio_duration_seconds": 0.766281,
+    "usage_units": 5,
+    "audio_sha256": "a2264af04e53bec87f773f644b3758b238f507f088d62275b8fe4c5adf626a94",
+    "ffmpeg_full_decode": "pass"
+  },
+  "video_api_status_probe": {
+    "status": "pass",
+    "operation": "list_existing_tasks",
+    "created_generation_task": false,
+    "billable_generation_requested": false
+  }
+}

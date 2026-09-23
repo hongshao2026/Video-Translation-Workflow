@@ -1,0 +1,23 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["app"],
+  "locale": "zh-CN",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Form", "Scrollbar"],
+  "ownership": {
+    "Select/Listbox": "native",
+    "Form": "authored",
+    "Scrollbar": "authored"
+  },
+  "requiredCommands": ["unit", "lint", "build"],
+  "commands": {
+    "unit": "npm test",
+    "lint": "npm run lint",
+    "build": "npm run build"
+  },
+  "evidence": {
+    "formAndStateContracts": "tests/rendered-html.test.mjs",
+    "designContext": "DESIGN.md",
+    "behaviorContract": "UX-CONTRACT.md"
+  }
+}

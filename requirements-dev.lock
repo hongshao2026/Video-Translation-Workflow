@@ -1,0 +1,9 @@
+-r requirements-media.lock
+
+httpcore==1.0.9
+httpx==0.28.1
+iniconfig==2.3.0
+pluggy==1.6.0
+Pygments==2.19.2
+pytest==9.0.3
+ruff==0.16.8
