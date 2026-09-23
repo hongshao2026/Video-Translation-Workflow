@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from scripts import workflow_runtime as runtime
 from scripts.build_review_packet import build
-from scripts.create_workflow_lock import build_payload, comparable, atomic_write_json
+from scripts.create_workflow_lock import atomic_write_json, build_payload, comparable
 from scripts.workflow_poll_guard import evaluate, state_is_local
 
 
@@ -44,6 +44,43 @@ class RuntimeTests(unittest.TestCase):
         runtime.save(job, state)
         return job
 
+    def wait_for_process_exit(self, pid, timeout_seconds=5):
+        """Wait for the detached test child to close inherited log handles."""
+        if os.name == "nt":
+            import ctypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+            kernel32.OpenProcess.restype = ctypes.c_void_p
+            kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+            kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel32.CloseHandle.restype = ctypes.c_int
+            handle = kernel32.OpenProcess(0x00100000, False, pid)
+            if not handle:
+                error = ctypes.get_last_error()
+                if error == 87:  # ERROR_INVALID_PARAMETER: the process already exited.
+                    return
+                raise OSError(error, "OpenProcess failed while waiting for test worker")
+            try:
+                self.assertEqual(
+                    kernel32.WaitForSingleObject(handle, int(timeout_seconds * 1000)),
+                    0,
+                    "Detached worker did not exit after publishing terminal state",
+                )
+            finally:
+                kernel32.CloseHandle(handle)
+            return
+
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.03)
+        self.fail("Detached worker did not exit after publishing terminal state")
+
     def test_chain_runs_without_model_calls_and_checkpoint_reuses(self):
         job = self.prepare([self.step("first"), self.step("second", requires=[{"path": "first.txt"}])])
         runtime.worker(job)
@@ -64,13 +101,18 @@ class RuntimeTests(unittest.TestCase):
         runtime.atomic(plan_path, plan)
         result = runtime.start(self.root, plan_path, self.workspace, None, True)
         self.assertIsNone(result["media_session_id"])
+        self.addCleanup(self.wait_for_process_exit, result["worker_pid"])
         job = Path(result["state_path"]).parent
 
         def local_completion():
             # This is local test supervision, not a model/tool polling loop.
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
-                state = runtime.read(job / "state.json")
+                try:
+                    state = runtime.read(job / "state.json")
+                except (FileNotFoundError, PermissionError):
+                    time.sleep(0.03)
+                    continue
                 if state["status"] in runtime.TERMINAL:
                     try:
                         with runtime.exclusive(job / "worker.lock"):
@@ -81,11 +123,14 @@ class RuntimeTests(unittest.TestCase):
             self.fail("Background worker did not finish: " + (job / "worker.log").read_text(encoding="utf-8", errors="replace") + repr(state))
 
         state = local_completion()
+        self.wait_for_process_exit(result["worker_pid"])
         self.assertEqual(state["status"], "needs_agent")
         event = runtime.read(Path(state["event_path"]))
         runtime.atomic(self.root / barrier["receipt"], {"status": "pass", "event_id": event["event_id"], "plan_sha256": state["plan_sha256"]})
-        runtime.resume(job, None)
+        resumed = runtime.resume(job, None)
+        self.addCleanup(self.wait_for_process_exit, resumed["worker_pid"])
         result = local_completion()
+        self.wait_for_process_exit(resumed["worker_pid"])
         diagnostic = runtime.read(job / "diagnostic.json") if (job / "diagnostic.json").is_file() else {}
         self.assertEqual(result["status"], "completed", diagnostic)
 

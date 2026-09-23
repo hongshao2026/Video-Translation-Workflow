@@ -18,7 +18,6 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 NAME = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 TERMINAL = {"completed", "failed", "uncertain", "needs_agent", "needs_user"}
 PAID_EFFECTS = {"paid_tts", "paid_audition"}
@@ -38,7 +37,15 @@ def sha(path: Path) -> str:
 
 
 def read(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+    for attempt in range(12):
+        try:
+            return json.loads(path.read_text(encoding="utf-8-sig"))
+        except PermissionError:
+            if attempt == 11:
+                raise
+            # Windows readers/AV may briefly hold the file during replacement.
+            time.sleep(min(0.02 * (attempt + 1), 0.15))
+    raise AssertionError("unreachable")
 
 
 def atomic(path: Path, value: dict) -> None:
@@ -182,7 +189,7 @@ def validate_plan(plan: dict, root: Path) -> None:
         command = step.get("command")
         if not isinstance(command, list) or not command or not all(isinstance(x, str) for x in command):
             raise ValueError("Machine command must be an argv array")
-        if any(re.search(r"(?:^--(?:api-key|token|authorization)$|sk-[A-Za-z0-9]{12,}|googlevideo\.com)", x, re.I) for x in command):
+        if any(re.search(r"(?:^--(?:api-key|token|authorization)$|sk-[A-Za-z0-9]{12,}|googlevideo\.com)", x, re.IGNORECASE) for x in command):
             raise ValueError("Use credential files/environment; do not put secrets or media URLs in plans")
         effects = step.get("effects", "local")
         if effects not in {"local", "paid_tts", "render", "paid_audition", "audition_render"}:
@@ -226,7 +233,7 @@ def save(job: Path, state: dict) -> None:
 
 
 def redact(line: str) -> str:
-    line = re.sub(r"https?://[^\s\"<>]*googlevideo\.com[^\s\"<>]*", "[REDACTED_MEDIA_URL]", line, flags=re.I)
+    line = re.sub(r"https?://[^\s\"<>]*googlevideo\.com[^\s\"<>]*", "[REDACTED_MEDIA_URL]", line, flags=re.IGNORECASE)
     line = re.sub(r"\bsk-[A-Za-z0-9_-]{12,}", "[REDACTED_KEY]", line)
     line = re.sub(r"(?i)((?:authorization|api[_ -]?key|cookie)\s*[:=])[^\r\n]+", r"\1[REDACTED]", line)
     return line
@@ -250,7 +257,7 @@ def command_run(step: dict, root: Path, log: Path) -> tuple[int, bool]:
     except subprocess.TimeoutExpired:
         timed_out = True
         if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, check=False)
         else:
             os.killpg(process.pid, signal.SIGKILL)
         process.kill()
@@ -285,7 +292,7 @@ def notify(job: Path, event_path: Path) -> None:
                "若为 smoke 自检，只确认通知送达，不启动视频生产。")
     try:
         result = subprocess.run([executable, "queue", "--thread", state["notify_thread"], "--message", message],
-                                cwd=state["workspace"], capture_output=True, timeout=30,
+                                cwd=state["workspace"], capture_output=True, timeout=30, check=False,
                                 **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
         event["delivery"] = {"status": "accepted" if result.returncode == 0 else "failed", "returncode": result.returncode,
                              "completed_at": now(), "consumption_confirmed": False}
@@ -391,7 +398,7 @@ def worker(job: Path, dispatch_id: str | None = None) -> None:
                     save(job, state)
                     time.sleep(min(2 ** retry, 30))
             emit(job, state, "completed", None, "all_declared_steps_and_outputs_verified")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - worker boundary records all failures locally.
             # Diagnostics exclude raw exception text, commands and logs: paths/hashes stay local.
             atomic(job / "diagnostic.json", {"exception_type": type(exc).__name__, "step_id": current,
                                             "message": redact(str(exc))[:2000],
