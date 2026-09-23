@@ -167,8 +167,8 @@ class ColdMigrationRestoreTests(unittest.TestCase):
     def test_temporary_or_credentialed_video_url_is_never_written_to_project_json(self) -> None:
         _, library, _ = self._services("source")
         unsafe = (
-            "https://r1---sn.example.googlevideo.com/videoplayback?"
-            "expire=999999&signature=TOP-SECRET"
+            "https://media.example.invalid/videoplayback?"
+            "expire=999999&signature=TEST-ONLY"
         )
         with self.assertRaisesRegex(ValueError, "临时媒体直链|签名"):
             library.create(source_kind="video_url", source=unsafe)
