@@ -114,7 +114,8 @@ class ProjectTransferTests(unittest.TestCase):
                 for info in source.infolist():
                     content = source.read(info)
                     if info.filename == "project/PROJECT.md":
-                        content = b"tampered"
+                        self.assertTrue(content)
+                        content = b"!" + content[1:]
                     target.writestr(info.filename, content)
 
             destination = root / "must-not-exist"
