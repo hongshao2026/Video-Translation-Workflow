@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dub-workbench.local/schemas/production_gate.schema.json",
+  "title": "Production gate",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "tts_native_speed",
+    "offline_rate",
+    "audio_time_stretch",
+    "forbidden_audio_processors",
+    "sync_strategy",
+    "working_master_frames_preserved",
+    "video_retime_plan",
+    "coverage_complete"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "status": {"const": "pass"},
+    "tts_native_speed": {"const": 1.0},
+    "offline_rate": {"const": 1.0},
+    "audio_time_stretch": {"const": false},
+    "forbidden_audio_processors": {"type": "array", "maxItems": 0},
+    "sync_strategy": {"const": "video_retime_only"},
+    "working_master_frames_preserved": {"const": true},
+    "video_retime_plan": {"$ref": "#/$defs/artifact"},
+    "coverage_complete": {"const": true}
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

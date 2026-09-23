@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dub-workbench"
+version = "0.1.0"
+description = "Local-first video translation and dubbing workbench"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi==0.141.1",
+  "keyring==25.7.0",
+  "Pillow==12.3.0",
+  "pydantic==2.13.4",
+  "python-multipart==0.0.32",
+  "requests==2.34.2",
+  "tzdata==2026.3",
+  "uvicorn==0.52.4",
+  "yt-dlp==2026.8.19",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx==0.28.1",
+  "pytest==9.0.3",
+  "ruff==0.16.8",
+]
+media = [
+  "librosa==1.0.0",
+  "numpy==2.3.5",
+  "soundfile==0.14.0",
+]
+
+[project.scripts]
+dub-portability = "backend.portability.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["backend", "backend.*"]
+
+[tool.setuptools.package-data]
+backend = ["prompt_packs/*.json", "schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

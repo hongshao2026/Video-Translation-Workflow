@@ -1,0 +1,23 @@
+# Optional CPU-side media tooling. GPU TTS engines intentionally use their own
+# device-specific environments; see docs/INSTALLATION.md.
+-r requirements.lock
+
+audioread==3.1.0
+cffi==2.1.1
+decorator==5.2.1
+joblib==1.5.2
+lazy_loader==0.4
+librosa==1.0.0
+llvmlite==0.46.0
+msgpack==1.1.2
+numba==0.63.1
+numpy==2.3.5
+packaging==26.3
+platformdirs==4.11.3
+pooch==1.9.0
+pycparser==3.0
+scikit-learn==1.8.0
+scipy==1.17.0
+soundfile==0.14.0
+soxr==1.0.0
+threadpoolctl==3.6.0

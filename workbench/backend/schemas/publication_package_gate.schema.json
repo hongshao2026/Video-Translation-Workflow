@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dub-workbench.local/schemas/publication_package_gate.schema.json",
+  "title": "Publication package gate",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "final_video",
+    "final_machine_qa",
+    "chapter_mapping",
+    "publication_text",
+    "cover_16x9",
+    "cover_4x3"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "status": {"const": "pass"},
+    "final_video": {"$ref": "#/$defs/artifact"},
+    "final_machine_qa": {"$ref": "#/$defs/artifact"},
+    "chapter_mapping": {"$ref": "#/$defs/artifact"},
+    "publication_text": {
+      "allOf": [
+        {"$ref": "#/$defs/artifact"},
+        {
+          "type": "object",
+          "required": ["format", "ads_removed"],
+          "properties": {
+            "format": {"const": "utf8_txt"},
+            "ads_removed": {"const": true}
+          }
+        }
+      ]
+    },
+    "cover_16x9": {
+      "allOf": [
+        {"$ref": "#/$defs/artifact"},
+        {
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": {"const": 1920},
+            "height": {"const": 1080}
+          }
+        }
+      ]
+    },
+    "cover_4x3": {
+      "allOf": [
+        {"$ref": "#/$defs/artifact"},
+        {
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": {"const": 1440},
+            "height": {"const": 1080}
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

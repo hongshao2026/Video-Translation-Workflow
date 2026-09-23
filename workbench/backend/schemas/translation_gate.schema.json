@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dub-workbench.local/schemas/translation_gate.schema.json",
+  "title": "Translation gate",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "mode",
+    "translator",
+    "reviewers",
+    "orchestrator_id",
+    "roles_are_distinct",
+    "unresolved_high",
+    "unresolved_total",
+    "regression_status",
+    "final_translation",
+    "chapter_reading",
+    "user_approval"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "status": {"const": "pass"},
+    "mode": {"const": "provider_agent_direct_quality_first"},
+    "translator": {"$ref": "#/$defs/covered_role"},
+    "reviewers": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {"$ref": "#/$defs/covered_role"}
+    },
+    "orchestrator_id": {"type": "string", "minLength": 1},
+    "roles_are_distinct": {"const": true},
+    "unresolved_high": {"const": 0},
+    "unresolved_total": {"const": 0},
+    "regression_status": {"const": "pass"},
+    "final_translation": {"$ref": "#/$defs/artifact"},
+    "chapter_reading": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "validation",
+        "status",
+        "missing_slots",
+        "duplicate_slots",
+        "subtitle_text_used_verbatim",
+        "subtitle_text_reconstructable_per_stable_id",
+        "layout"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "validation": {"$ref": "#/$defs/artifact"},
+        "status": {"const": "pass"},
+        "missing_slots": {"const": 0},
+        "duplicate_slots": {"const": 0},
+        "subtitle_text_used_verbatim": {"const": true},
+        "subtitle_text_reconstructable_per_stable_id": {"const": true},
+        "layout": {"const": "sentence_aligned_verbatim"}
+      }
+    },
+    "user_approval": {
+      "type": "object",
+      "required": [
+        "artifact",
+        "approved",
+        "capture_mode",
+        "command",
+        "reading_sha256",
+        "final_translation_sha256"
+      ],
+      "properties": {
+        "artifact": {"$ref": "#/$defs/artifact"},
+        "approved": {"const": true},
+        "capture_mode": {"const": "explicit_downstream_command"},
+        "command": {"type": "string", "minLength": 1},
+        "reading_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "final_translation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "covered_role": {
+      "type": "object",
+      "required": ["id", "missing", "coverage", "report"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "missing": {"const": 0},
+        "coverage": {"type": "string", "minLength": 1},
+        "report": {"$ref": "#/$defs/artifact"}
+      }
+    }
+  }
+}

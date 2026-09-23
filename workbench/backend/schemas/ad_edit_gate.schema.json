@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dub-workbench.local/schemas/ad_edit_gate.schema.json",
+  "title": "Advertisement edit gate",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "decision",
+    "source_master",
+    "working_master",
+    "timeline_mapping",
+    "removed_segments",
+    "overlay_regions",
+    "subtitle_layer_above_overlays",
+    "unresolved_count"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "status": {"const": "pass"},
+    "decision": {
+      "enum": ["no_ads_detected", "ads_removed", "ads_overlaid", "ads_removed_and_overlaid"]
+    },
+    "source_master": {"$ref": "#/$defs/artifact"},
+    "working_master": {"$ref": "#/$defs/artifact"},
+    "timeline_mapping": {"$ref": "#/$defs/artifact"},
+    "removed_segments": {"type": "array", "items": {"type": "object"}},
+    "overlay_regions": {"type": "array", "items": {"type": "object"}},
+    "subtitle_layer_above_overlays": {"const": true},
+    "unresolved_count": {"const": 0}
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
