@@ -12,9 +12,14 @@
 
 ## 强制生产策略
 
+- `execution_mode=local_runner_event_driven`
+- `model_progress_polling=forbidden`
+- `document_loading=first_load_then_hash_check_in_retained_context`
+- `agent_handoff=minimal_frozen_role_packet`
+
 - `media_format_selection=automatic_after_probe`
 - `ad_policy=detect_then_apply_evidence_based`
-- `translation_mode=codex_agent_direct_quality_first`
+- `translation_mode=provider_agent_direct_quality_first`
 - `translation_review=two_independent_agents_full_coverage`
 - `chapter_reading_review=required_before_translation_gate`
 - `chapter_reading_layout=sentence_aligned_verbatim`
@@ -52,4 +57,4 @@
 - 已完成：项目目录初始化。
 - 待完成：生成并通过 `qa/workflow_lock.json`，然后自动查询、选择当前视频的格式与原语言音轨并继续下载。
 
-> 本节仅记录进度。只修改本节时不改变冻结约束哈希，也不要求重新生成工作流锁。
+> 实时进度存于 `runtime/state.json` 或 `runtime/jobs/<job_id>/state.json`；本节仅记录进度摘要。只修改本节时不改变冻结约束哈希，也不要求重新生成工作流锁。

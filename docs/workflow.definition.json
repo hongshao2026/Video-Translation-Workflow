@@ -1,5 +1,5 @@
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "name": "外语长视频中文译配工作流",
   "summary": "从公开视频链接到时间轴对齐、保留原画质、带中文字幕的中文配音成片，并生成无广告中文发布文案、最终章节和双比例封面。",
   "team": {
@@ -17,7 +17,8 @@
     "docs/AD_DETECTION_AND_OVERLAY_SOP.md",
     "docs/TRANSLATION_REVIEW_SOP.md",
     "docs/workflow.definition.json",
-    "<video_id>_run/PROJECT.md"
+    "<video_id>_run/PROJECT.md",
+    "docs/EVENT_DRIVEN_EXECUTION_SOP.md"
   ],
   "global_hard_rules": [
     "格式探测 QA 通过后，按冻结的源语言、原声标记、真实分辨率、编码兼容性、帧率和码率自动选择画面与音频格式，记录 media_format_selection=pass 后直接下载，不请求人工格式批准。",
@@ -37,7 +38,10 @@
     "每条正式成片默认生成 1920×1080 的 16:9 PNG 封面和 1440×1080 的 4:3 PNG 封面；文字、人物、外文人名、安全边距和广告残留必须通过检查，4:3 不得机械裁掉关键内容。",
     "没有 qa/publication_package_gate_vN.json 的 pass 状态或成片/文案/章节/封面哈希不匹配时，发布包不得交付。",
     "角色音色锁定后直接允许生成一分钟试听，不设试听费用或生成批准。",
-    "试听后用户发出生成全片、生成全文或等价指令，即授权当前冻结输入的全文付费 TTS 与渲染；自动 dry-run 通过后直接继续，不再请求二次确认。"
+    "试听后用户发出生成全片、生成全文或等价指令，即授权当前冻结输入的全文付费 TTS 与渲染；自动 dry-run 通过后直接继续，不再请求二次确认。",
+    "长机器任务由本地执行器持有；禁止模型主动轮询，只在语义/人工关卡、失败、不确定或完成事件交接。",
+    "首次完整加载规范；有效上下文中哈希未变时只校验，冻结锁与运行状态分离。",
+    "T/A/B 使用冻结精简职责包，保持独立全文覆盖；机械验证不替代语义判断。"
   ],
   "stage_transition_gates": [
     {
@@ -89,36 +93,23 @@
     "title_policy": "3_to_5_candidates_unless_user_requests_one",
     "description_policy": "natural_simplified_chinese_keep_original_link_remove_ads_promotions_tracking_links_subscription_ctas_unrelated_hashtags_and_keyword_stuffing",
     "chapter_timeline": "source_to_approved_working_master_to_current_retimed_output",
-    "chapter_requirements": [
-      "source_count_matches",
-      "strictly_increasing",
-      "within_final_duration",
-      "current_final_media_sha256_bound"
-    ],
+    "chapter_requirements": ["source_count_matches", "strictly_increasing", "within_final_duration", "current_final_media_sha256_bound"],
     "cover_variants": [
-      {"id": "16x9", "format": "png", "width": 1920, "height": 1080},
-      {"id": "4x3", "format": "png", "width": 1440, "height": 1080}
+      {
+        "id": "16x9",
+        "format": "png",
+        "width": 1920,
+        "height": 1080
+      },
+      {
+        "id": "4x3",
+        "format": "png",
+        "width": 1440,
+        "height": 1080
+      }
     ],
-    "cover_requirements": [
-      "identity_verified",
-      "foreign_names_verified",
-      "text_exact_and_legible",
-      "safe_margins_pass",
-      "visual_series_consistent",
-      "advertising_residue_count_zero",
-      "4x3_recomposed_not_destructive_crop"
-    ],
-    "artifacts": [
-      "deliverables/<video_id>_发布材料_vN.txt",
-      "deliverables/<video_id>_中文简介与章节_vN.txt",
-      "deliverables/<video_id>_片中书单_vN.txt",
-      "qa/chapter_timeline_vN.json",
-      "qa/publication_materials_vN.json",
-      "deliverables/covers/<video_id>_中文封面_16x9_vN.png",
-      "deliverables/covers/<video_id>_中文封面_4x3_vN.png",
-      "qa/cover_art_vN.json",
-      "qa/publication_package_gate_vN.json"
-    ]
+    "cover_requirements": ["identity_verified", "foreign_names_verified", "text_exact_and_legible", "safe_margins_pass", "visual_series_consistent", "advertising_residue_count_zero", "4x3_recomposed_not_destructive_crop"],
+    "artifacts": ["deliverables/<video_id>_发布材料_vN.txt", "deliverables/<video_id>_中文简介与章节_vN.txt", "deliverables/<video_id>_片中书单_vN.txt", "qa/chapter_timeline_vN.json", "qa/publication_materials_vN.json", "deliverables/covers/<video_id>_中文封面_16x9_vN.png", "deliverables/covers/<video_id>_中文封面_4x3_vN.png", "qa/cover_art_vN.json", "qa/publication_package_gate_vN.json"]
   },
   "tested_case": {
     "included": false,
@@ -229,15 +220,16 @@
       "mode": "自动冻结",
       "owner": "orchestrator",
       "summary": "记录链接、视频 ID、目标语言、角色数量和输出规格，建立独立运行目录。",
-      "tasks": ["创建 <video_id>_run 目录", "完整读取全部 required_documents", "冻结输入链接与任务目标", "冻结最终发布包策略与双比例封面规格", "生成 qa/workflow_lock.json 并记录规则文件哈希与硬性策略"],
+      "tasks": ["创建 <video_id>_run 目录", "首次完整读取全部 required_documents；保留上下文的续跑只校验哈希", "冻结输入链接与任务目标", "冻结最终发布包策略与双比例封面规格", "生成 qa/workflow_lock.json 并记录规则文件哈希与硬性策略"],
       "inputs": ["公开视频链接", "目标：中文配音 + 中文字幕"],
       "outputs": ["项目目录", "任务状态清单", "发布包策略", "qa/workflow_lock.json"],
       "required_gate": {
         "artifact": "qa/workflow_lock.json",
         "status": "pass",
-        "conditions": ["required_document_hashes_complete=true", "media_format_selection=automatic_after_probe", "ad_policy=detect_then_apply_evidence_based", "translation_mode=codex_agent_direct_quality_first", "translation_review=two_independent_agents_full_coverage", "chapter_reading_review=required_before_translation_gate", "chapter_reading_layout=sentence_aligned_verbatim", "translation_approval=explicit_downstream_command_binds_current_version", "chinese_tts_speed=1.0", "chinese_offline_rate=1.0", "sync_strategy=video_retime_only", "preserve_all_formal_working_master_frames=true", "subtitle_timeline=rebuilt_from_chinese_audio", "audition_authorization=voice_selection_implies_audition", "full_tts_authorization=user_generate_full_command", "publication_package=required_after_final_machine_qa", "publication_text_format=utf8_txt_only", "cover_variants=16x9_and_4x3"]
+        "conditions": ["required_document_hashes_complete=true", "media_format_selection=automatic_after_probe", "ad_policy=detect_then_apply_evidence_based", "translation_mode=provider_agent_direct_quality_first", "translation_review=two_independent_agents_full_coverage", "chapter_reading_review=required_before_translation_gate", "chapter_reading_layout=sentence_aligned_verbatim", "translation_approval=explicit_downstream_command_binds_current_version", "chinese_tts_speed=1.0", "chinese_offline_rate=1.0", "sync_strategy=video_retime_only", "preserve_all_formal_working_master_frames=true", "subtitle_timeline=rebuilt_from_chinese_audio", "audition_authorization=voice_selection_implies_audition", "full_tts_authorization=user_generate_full_command", "publication_package=required_after_final_machine_qa", "publication_text_format=utf8_txt_only", "cover_variants=16x9_and_4x3", "execution_mode=local_runner_event_driven", "model_progress_polling=forbidden", "model_status_query=explicit_user_request_or_actionable_event_only", "document_loading=first_load_then_hash_check_in_retained_context", "agent_handoff=minimal_frozen_role_packet", "machine_gates=deterministic_validators", "error_recovery=bounded_local_retry_then_evidence_event", "notification_delivery=durable_at_most_once_event", "runtime_state=separate_from_frozen_workflow_lock"]
       },
-      "resume_from": "项目目录与冻结的输入记录"
+      "resume_from": "项目目录与冻结的输入记录",
+      "model_progress_polling": "forbidden"
     },
     {
       "number": "02",
@@ -254,7 +246,8 @@
         "status": "pass",
         "conditions": ["format_probe_pass=true", "selected_video_format_recorded=true", "selected_audio_format_recorded=true", "source_language_verified=true", "selection_policy=source_language_resolution_compatibility_fps_bitrate", "manual_approval_required=false"]
       },
-      "resume_from": "已完成的独立画面/音频文件；直链过期时只重新取直链"
+      "resume_from": "已完成的独立画面/音频文件；直链过期时只重新取直链",
+      "model_progress_polling": "forbidden"
     },
     {
       "number": "03",
@@ -272,12 +265,13 @@
         "status": "pass",
         "conditions": ["original_master_preserved=true", "content_ad_scan_complete=true", "visual_ad_scan_complete=true", "all_candidates_have_evidence_based_decision=true", "decision_rule_version_recorded=true", "confidence_and_rationale_recorded=true", "uncertain_candidates_default_keep=true", "source_to_edit_timeline_valid=true", "working_master_hash_recorded=true", "formal_slots_based_on_working_master=true", "render_order=video_overlay_subtitles"]
       },
-      "resume_from": "各阶段 JSON/WAV；存在且验收通过则跳过"
+      "resume_from": "各阶段 JSON/WAV；存在且验收通过则跳过",
+      "model_progress_polling": "forbidden"
     },
     {
       "number": "04",
       "id": "translate",
-      "title": "Codex 翻译 Agent 直接全文翻译",
+      "title": "Provider 翻译 Agent 直接全文翻译",
       "mode": "质量优先 Agent 翻译",
       "owner": "translator",
       "co_owners": ["orchestrator"],
@@ -287,7 +281,8 @@
       "outputs": ["qa/translation_agent_t_manifest_vN.json", "work/translation_candidate_agent_t_vN.json / .srt", "可选机器 QA 清单"],
       "hard_constraints": ["translator_is_distinct=true", "direct_from_source=true", "local_draft_as_input=false", "full_id_coverage=true", "semantic_compression_for_timing=false", "local_model_cannot_replace_translator=true"],
       "exit_rule": "Agent T 缺失 ID=0 且源文/术语表/候选稿哈希已记录；输出仍是候选稿，禁止跳过阶段 05。",
-      "resume_from": "translation_agent_t_manifest 中已验证的连续 ID 批次；额度不足时等待恢复，不用本地模型补齐同一版本"
+      "resume_from": "translation_agent_t_manifest 中已验证的连续 ID 批次；额度不足时等待恢复，不用本地模型补齐同一版本",
+      "model_progress_polling": "forbidden"
     },
     {
       "number": "05",
@@ -303,9 +298,10 @@
       "required_gate": {
         "artifact": "qa/translation_gate.json",
         "status": "pass",
-        "conditions": ["mode=codex_agent_direct_quality_first", "translator_missing_ids=0", "translator_source_and_glossary_hashes_match=true", "translator_manifest_hash_recorded=true", "translator_reviewer_roles_distinct=true", "reviewer_a_missing_ids=0", "reviewer_b_missing_ids=0", "same_candidate_sha256=true", "all_report_hashes_recorded=true", "unresolved_high=0", "unresolved_total=0", "regression_status=pass", "chapter_reading_validation=pass", "chapter_reading_layout=sentence_aligned_verbatim", "chapter_reading_missing_slots=0", "chapter_reading_duplicate_slots=0", "chapter_reading_subtitle_text_used_verbatim=true", "chapter_reading_subtitle_text_reconstructable=true", "chapter_reading_visible_text_insertions_or_deletions=0", "chapter_reading_nonterminal_nonchapter_final_line_breaks=0", "chapter_reading_and_final_translation_hashes_recorded=true", "approval_capture_mode=explicit_downstream_command", "manual_hash_repetition_required=false", "user_approval_hashes_match=true", "user_approved=true"]
+        "conditions": ["mode=provider_agent_direct_quality_first", "translator_missing_ids=0", "translator_source_and_glossary_hashes_match=true", "translator_manifest_hash_recorded=true", "translator_reviewer_roles_distinct=true", "reviewer_a_missing_ids=0", "reviewer_b_missing_ids=0", "same_candidate_sha256=true", "all_report_hashes_recorded=true", "unresolved_high=0", "unresolved_total=0", "regression_status=pass", "chapter_reading_validation=pass", "chapter_reading_layout=sentence_aligned_verbatim", "chapter_reading_missing_slots=0", "chapter_reading_duplicate_slots=0", "chapter_reading_subtitle_text_used_verbatim=true", "chapter_reading_subtitle_text_reconstructable=true", "chapter_reading_visible_text_insertions_or_deletions=0", "chapter_reading_nonterminal_nonchapter_final_line_breaks=0", "chapter_reading_and_final_translation_hashes_recorded=true", "approval_capture_mode=explicit_downstream_command", "manual_hash_repetition_required=false", "user_approval_hashes_match=true", "user_approved=true"]
       },
-      "resume_from": "Agent T manifest + 冻结候选稿 + 两份独立报告 + 章节阅读稿验证；任何翻译或章节映射修改都生成新阅读稿并重新请求批准"
+      "resume_from": "Agent T manifest + 冻结候选稿 + 两份独立报告 + 章节阅读稿验证；任何翻译或章节映射修改都生成新阅读稿并重新请求批准",
+      "model_progress_polling": "forbidden"
     },
     {
       "number": "06",
@@ -319,7 +315,8 @@
       "inputs": ["正式翻译稿", "qa/translation_gate.json=pass 且哈希匹配", "源视频", "角色名称", "声音库"],
       "outputs": ["role_map.json", "角色→音色映射", "一分钟试听片"],
       "entry_rule": "translation_gate 缺失、非 pass 或正式翻译哈希不匹配时禁止进入。",
-      "resume_from": "role_map.json、已锁定的音色配置与已验证试听缓存"
+      "resume_from": "role_map.json、已锁定的音色配置与已验证试听缓存",
+      "model_progress_polling": "forbidden"
     },
     {
       "number": "07",
@@ -347,7 +344,8 @@
         "status": "pass",
         "conditions": ["ad_edit_gate=pass", "working_master_and_overlay_hashes_match=true", "translation_hash_matches=true", "voice_mapping_locked=true", "user_generate_full_command_matches_frozen_inputs=true", "automatic_dry_run_recorded=true", "all_tts_speed_1_0=true", "all_offline_rate_1_0=true", "chinese_tempo_filters=0", "chinese_overlap_count=0", "retime_source_coverage_complete=true", "retime_gaps=0", "retime_overlaps=0", "overlay_intervals_valid=true", "render_order=video_overlay_subtitles", "subtitle_timeline_rebuilt=true"]
       },
-      "resume_from": "TTS manifest、逐批音频、视频区块和原音轨区块；已完成文件自动跳过"
+      "resume_from": "TTS manifest、逐批音频、视频区块和原音轨区块；已完成文件自动跳过",
+      "model_progress_polling": "forbidden"
     },
     {
       "number": "08",
@@ -365,7 +363,24 @@
         "status": "pass",
         "conditions": ["final_machine_qa=pass", "final_media_sha256_matches=true", "publication_materials_qa=pass", "publication_text_format=utf8_txt_only", "publication_text_chat_echo_complete=true", "chapter_mapping_source_to_working_to_output_valid=true", "chapter_times_strictly_increasing=true", "chapter_count_matches=true", "promotional_links_remaining=0", "cover_art_qa=pass", "cover_16x9=1920x1080_png", "cover_4x3=1440x1080_png", "cover_text_and_identity_verified=true", "cover_advertising_residue=0", "all_artifact_hashes_match=true", "old_versions_preserved=true"]
       },
-      "resume_from": "成片和验收报告；上传失败不需要重新渲染"
+      "resume_from": "成片和验收报告；上传失败不需要重新渲染",
+      "model_progress_polling": "forbidden"
     }
-  ]
+  ],
+  "execution_policy": {
+    "execution_mode": "local_runner_event_driven",
+    "model_progress_polling": "forbidden",
+    "model_status_query": "explicit_user_request_or_actionable_event_only",
+    "document_loading": "first_load_then_hash_check_in_retained_context",
+    "agent_handoff": "minimal_frozen_role_packet",
+    "machine_gates": "deterministic_validators",
+    "error_recovery": "bounded_local_retry_then_evidence_event",
+    "notification_delivery": "durable_at_most_once_event",
+    "runtime_state": "separate_from_frozen_workflow_lock",
+    "actionable_events": ["needs_agent", "needs_user", "failed", "uncertain", "completed"],
+    "progress_events_to_model": false,
+    "normal_model_progress_poll_count": 0,
+    "hook_enforcement": "best_effort_host_write_stdin_excluded",
+    "notification_acceptance_is_not_consumption": true
+  }
 }

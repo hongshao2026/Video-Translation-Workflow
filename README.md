@@ -1,6 +1,6 @@
 # Video Translation Workflow
 
-这是一个可跨设备复用的长视频中文译配工作流仓库。它保存流程规则、SOP、项目模板和安全辅助脚本，不保存任何源视频、成片、音频、字幕成品、Cookie、API Key、模型权重或具体项目运行记录。
+这是一个可跨设备复用的长视频中文译配工作流与本地工作台仓库。它保存流程规则、SOP、项目模板、安全辅助脚本，以及 `workbench/` 中可运行的 Zotero 式视频资料库软件；不保存任何源视频、成片、音频、Cookie、API Key、模型权重或具体项目运行记录。
 
 ## 能完成什么
 
@@ -10,6 +10,7 @@
 
 ## 仓库内容
 
+- `workbench/`：完整本地工作台；包含 React/Vinext 前端、FastAPI 后端、SQLite 任务状态、可替换 LLM/语音 Provider、下载、T/A/B/C、门禁、TTS、自动音频时间线、渲染、发布包与迁移工具。
 - `AGENTS.md`：给 Codex 或其他编排 Agent 的强制执行规则。
 - `docs/workflow.definition.json`：机器可读的阶段、角色和门禁定义。
 - `docs/LOCAL_DUBBING_WORKFLOW.md`：完整生产流程。
@@ -25,14 +26,19 @@
 
 ## 新设备快速开始
 
-先安装 Git、Python 3.11+、FFmpeg/ffprobe、Node.js 和 yt-dlp。Demucs、faster-whisper、说话人识别模型及 TTS 引擎按设备能力选择；模型权重必须放在仓库外。
+先安装 Git、Python 3.12、FFmpeg/ffprobe 和 Node.js 22.13+。本地可选 ASR/TTS 模型按设备能力安装，模型权重必须放在仓库外。
 
 ```powershell
 git clone https://github.com/hongshao2026/Video-Translation-Workflow.git
 Set-Location Video-Translation-Workflow
-python -m pip install -r requirements-core.txt
 python scripts/audit_repository.py
+Set-Location workbench
+.\scripts\bootstrap.ps1
+.\scripts\diagnose.ps1 -Strict
+.\start_workbench.ps1
 ```
+
+启动后访问 `http://127.0.0.1:3000/`。在设置中分别保存翻译与语音 Provider；API Key 只进入本机系统密钥链。内置支持 MiniMax 和保守的 OpenAI-compatible 契约，不同项目可冻结不同模型或厂商。工作台的完整说明见 [workbench/README.md](workbench/README.md)。
 
 ## 链接 + Cookie 自动生成提示词
 
@@ -113,7 +119,27 @@ python scripts/create_workflow_lock.py `
 
 ## 执行器说明
 
-这个仓库是工作流与质量门禁的权威来源，不绑定某一台机器的绝对路径或某一个 TTS/ASR 实现。`docs/LOCAL_DUBBING_WORKFLOW.md` 中的 `your_pipeline` 是当前设备的执行器接口占位名。Codex 可以在每个被忽略的 `<video_id>_run/scripts/` 目录内生成项目专用执行器，也可以接入已有容器或本地工具；无论实现怎样替换，都必须满足 `workflow.definition.json` 的稳定 ID、哈希链、TTS 1.0 原速、视频重定时和 QA 条件。
+工作流 schema 10 使用事件驱动执行，详见 [执行与轮询约束](docs/EVENT_DRIVEN_EXECUTION_SOP.md)。`scripts/workflow_runtime.py` 串联本地机器步骤，原任务通过完成/失败事件恢复；正常运行中的进度不调用模型。`scripts/build_review_packet.py` 生成绑定原文件哈希的精简源文/审核包，保持稳定 ID 和文本不变。
+
+初始化项目级反轮询护栏：
+
+```powershell
+python scripts/install_workflow_hooks.py --workspace .
+```
+
+随后在 Codex `/hooks` 审阅并信任新钩子。安装器不改变宿主信任或审批设置。钩子不能截获已有终端会话的 `write_stdin`；执行器用独立进程持有长任务，避免给模型留下媒体轮询会话。不能宣称钩子是完全的工具隔离。
+
+执行计划包含 `schema_version=1`、唯一 `job_id`、绑定 `path/sha256/status` 的 `workflow_lock` 和 `steps`。每个机器步骤声明 `id`、`kind=machine`、参数数组 `command`、`requires`、`outputs`、`timeout_seconds`、`effects` 和有限重试。命令可用 `{python}` 表示当前 Python。语义/人工步骤使用 `kind=agent/human`、`receipt`、`requires` 和 `outputs`；回执必须绑定事件 ID 和计划哈希。生产执行器仍负责原有完整广告/翻译/音色/授权/速度/生产门禁，不可用通用运行器的成功状态替代。
+
+```powershell
+python scripts/workflow_runtime.py start --run-dir .\VIDEO_ID_run --plan .\VIDEO_ID_run\work\machine_plan_v1.json --notify-thread CURRENT_TASK_UUID
+```
+
+事件会通过本地 `codex queue` 提交给指定的现有任务，记录接受和消费两种状态；不确定提交不重试。任务响应后使用 `ack-event --job JOB_PATH --event-id EVENT_UUID` 确认消费；完成所需语义/用户决定并生成回执后用 `resume --job JOB_PATH` 继续。失败恢复还需要 `--repair-evidence PATH`；不确定付费请求不能用该命令重试。没有通知通道时仅可明确选择 `--manual-events`，并报告需要人工恢复。
+
+所有运行状态、事件、日志和断点位于被忽略的 `<video_id>_run/runtime/`。首次加载规范后保留上下文的续跑只校验哈希；单纯阶段变化不使工作流锁失效。`create_workflow_lock.py --rules-root PATH` 也支持含 `dub_workbench/docs` 的本地工作区。已存在的项目与用户批准不会被安装或规范更新自动重写。
+
+`workbench/` 是本仓库默认、可测试的生产执行器；根目录脚本继续提供无界面的初始化、事件驱动编排和安全审计。`docs/LOCAL_DUBBING_WORKFLOW.md` 中保留的 `your_pipeline` 只代表第三方或项目专用执行器兼容接口，不再表示本仓库缺少实现。无论使用默认工作台还是外部执行器，都必须满足稳定 ID、哈希链、TTS 1.0 原速、视频重定时和 QA 条件。
 
 ## 安全边界
 

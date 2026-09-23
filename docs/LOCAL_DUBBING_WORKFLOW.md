@@ -35,6 +35,12 @@
 
 开始任何生产动作前，主控必须把上述通用文件和当前 `PROJECT.md` 的路径、版本或 SHA-256 写入项目状态记录。未记录即视为没有加载工作流，不得进入翻译、付费 TTS 或渲染。
 
+## 2.1 事件驱动执行
+
+同时执行 `EVENT_DRIVEN_EXECUTION_SOP.md`。机器步骤交给统一执行器连续运行；进度、等待、有限重试和机械校验不唤醒模型。只在语义/人工关卡或终止事件交回模型。禁止主动轮询长任务或子 Agent。媒体 Agent 负责计划和异常交接，本地执行器持有进程。
+
+首次完整加载强制规范并绑定哈希；同一有效上下文中规范未变只校验哈希。上下文丢失或新 Agent 重新加载职责所需内容。运行状态独立于冻结锁，阶段变化不反复重写锁。
+
 ## 3. 强制 Agent 编制
 
 流程定义 6 个长期角色，但不需要一直同时运行。质量优先翻译阶段先由 Agent T 直接翻译全文，随后审核阶段的峰值并发固定为 3 个：主控 Agent 加两个独立翻译审核 Agent。T、A、B 都是正式翻译的硬性角色；无法启动 T 时停在阶段 04，无法同时启动 A/B 时停在阶段 05。
@@ -121,13 +127,17 @@ Cookie 与 API Key 都是敏感凭证：不粘贴到聊天、不写进文档、�
 1. 提取 `video_id`，建立 `<video_id>_run`；
 2. 记录输入链接和用户明确的创作目标；
 3. 记录本次同步策略、原声音量、字幕方式和目标分辨率；
-4. 完整读取 `AGENTS.md`、本文件、`AD_DETECTION_AND_OVERLAY_SOP.md`、`TRANSLATION_REVIEW_SOP.md`、`workflow.definition.json` 和当前 `PROJECT.md`；
+4. 首次完整读取 `AGENTS.md`、本文件、广告 SOP、翻译 SOP、`EVENT_DRIVEN_EXECUTION_SOP.md`、`workflow.definition.json` 和当前 `PROJECT.md`；保留有效上下文的续跑只校验未变哈希；
 5. 生成 `qa/workflow_lock.json`，记录上述文件路径和 SHA-256，并固定以下字段：
 
 ```text
+execution_mode = local_runner_event_driven
+model_progress_polling = forbidden
+document_loading = first_load_then_hash_check_in_retained_context
+agent_handoff = minimal_frozen_role_packet
 ad_policy = detect_then_apply_evidence_based
 media_format_selection = automatic_after_probe
-translation_mode = codex_agent_direct_quality_first
+translation_mode = provider_agent_direct_quality_first
 translation_review = two_independent_agents_full_coverage
 chapter_reading_review = required_before_translation_gate
 chapter_reading_layout = sentence_aligned_verbatim
@@ -145,7 +155,7 @@ cover_variants = 16x9_and_4x3
 ```
 
 
-完成标志：项目目录存在，任务目标冻结，`qa/workflow_lock.json.status == "pass"` 且文档哈希齐全。通用规则文件、冻结输入或 `PROJECT.md` 中的项目约束发生实质变化后必须重新生成工作流锁；仅追加运行状态不应触发新的工作流锁版本。
+完成标志：项目目录存在，任务目标冻结，`qa/workflow_lock.json.status == "pass"` 且文档哈希齐全。通用规则文件、冻结输入或 `PROJECT.md` 中的项目约束发生实质变化后必须重新生成工作流锁；仅更新运行状态、阶段和下一门禁不触发新的工作流锁版本；实时状态写入独立 runtime 文件。
 
 ### 02 高清下载与源文件验收
 
@@ -213,7 +223,7 @@ python scripts\make_slots.py `
 
 完成标志：原始母版与工作母版分开保存，`ad_edit_gate.json.status == "pass"`，所有广告候选均已按证据规则自动决定，时间映射与遮盖计划已记录；基于工作母版的 `asr_full.json/.srt`、正式 slots 和背景轨存在并通过结构检查。广告门禁未通过时禁止开始阶段 04，但不再将广告处置暂停为人工批准关卡。
 
-### 04 Codex 翻译 Agent 直接全文翻译
+### 04 Provider 翻译 Agent 直接全文翻译
 
 严格执行 `TRANSLATION_REVIEW_SOP.md` 的质量优先模式。主控先冻结工作母版对应的正式 slots、源文、说话人信息、术语表和用户决定，并记录 SHA-256；然后启动独立翻译 Agent T。
 
@@ -236,7 +246,7 @@ work/translation_candidate_agent_t_vN.srt
 
 候选稿完成后运行 ID、空句、数字、术语、跨槽和 JSON/SRT 结构检查。Ollama/Qwen 可作为可选辅助扫描或争议句第三参考，但不能生成默认候选稿、覆盖 Agent T 输出或替代任何 Agent。
 
-Codex 额度不足或 Agent T 中断时保存已验证批次并等待续跑；不得把剩余片段交给本地模型混入同一候选版本。
+冻结 Provider 额度不足或 Agent T 中断时保存已验证批次并等待续跑；不得静默换模型，或把剩余片段交给其他来源混入同一候选版本。
 
 完成标志：Agent T 与主控/A/B 角色不同；源文、术语表和候选稿哈希已记录；Agent T 全文覆盖、缺失 ID 为 0；候选 JSON/SRT 结构正确。这里产出的仍是“候选稿”，不得跳过阶段 05。
 
@@ -326,7 +336,7 @@ work/translation_final_vN.srt
 deliverables/<video_id>_中文阅读版_按章节_vN.md
 ```
 
-完成标志：`translation_gate.json.status == "pass"` 且模式为 `codex_agent_direct_quality_first`；T、A、B 角色互不重复，三者缺失 ID 均为 0，所有清单/报告和正式稿哈希匹配；章节阅读稿验证为 `pass`、完整且唯一覆盖全部槽位，并且当前展示后的明确下游执行指令已自动绑定阅读稿与正式翻译哈希。任一条件不满足，后续阶段必须停止；条件满足后不得追加批准问答。
+完成标志：`translation_gate.json.status == "pass"` 且模式为 `provider_agent_direct_quality_first`；T、A、B 任务互不替代，三者缺失 ID 均为 0，所有清单/报告和正式稿哈希匹配；章节阅读稿验证为 `pass`、完整且唯一覆盖全部槽位，并且当前展示后的明确下游执行指令已自动绑定阅读稿与正式翻译哈希。任一条件不满足，后续阶段必须停止；条件满足后不得追加批准问答。
 
 ### 06 角色识别、选音与自动一分钟试听
 
@@ -683,7 +693,7 @@ old_versions_preserved = true
 - [ ] 高清源视频与正确原语言音轨通过全片解码；
 - [ ] `qa/ad_edit_gate.json` 为 `pass`；原始母版未覆盖，全部广告候选已按证据决定，删除/遮盖区间和原新时轴映射已验证；
 - [ ] ASR、槽位和正式翻译 ID 连续且时间单调；
-- [ ] `qa/translation_gate.json` 为 `pass` 且模式为 `codex_agent_direct_quality_first`；翻译 Agent T 直接覆盖全文，两个独立审核 Agent A/B 都覆盖全文，三者身份不同且清单/报告哈希已记录；
+- [ ] `qa/translation_gate.json` 为 `pass` 且模式为 `provider_agent_direct_quality_first`；翻译 Agent T 直接覆盖全文，两个独立审核 Agent A/B 都覆盖全文，三项任务独立且清单/报告哈希已记录；
 - [ ] 高严重度和待定项均为 0；
 - [ ] 已按章节生成中文阅读稿，`qa/chapter_reading_validation_vN.json` 为 `pass`，全部正式字幕槽完整且唯一覆盖，正文逐字来自正式稿 `subtitle_zh`；
 - [ ] 用户已阅读并批准与章节阅读稿及正式翻译 SHA-256 绑定的明确版本；

@@ -39,10 +39,15 @@
 *cookies*
 *api_key*
 *apikey*
-*credential*
-*secret*
-*token*
+*credential*.txt
+*credential*.json
+*secret*.txt
+*secret*.json
+*token*.txt
+*token*.json
 minimax_api.txt
+.codex/hooks.json
+.codex/workflow/
 
 # Runtime caches and generated outputs.
 source/

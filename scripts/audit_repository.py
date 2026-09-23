@@ -27,6 +27,10 @@ FORBIDDEN_NAME_PATTERNS = (
     re.compile(r"(^|[._-])secret([._-]|$)", re.IGNORECASE),
     re.compile(r"(^|[._-])token([._-]|$)", re.IGNORECASE),
 )
+ALLOWED_SENSITIVE_SOURCE_NAMES = {
+    "credentials.py",
+    "test_credentials.py",
+}
 SENSITIVE_CONTENT_PATTERNS = (
     ("GitHub token", re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}\b")),
     ("GitHub fine-grained token", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b")),
@@ -40,7 +44,25 @@ SENSITIVE_CONTENT_PATTERNS = (
     ("personal macOS path", re.compile(re.escape("/" + "Users/") + r"(?!<)[^/\s]+/")),
     ("personal Linux path", re.compile(re.escape("/" + "home/") + r"(?!<)[^/\s]+/")),
 )
-TEXT_SUFFIXES = {".md", ".txt", ".json", ".py", ".ps1", ".sh", ".yml", ".yaml", ".toml", ".ini"}
+TEXT_SUFFIXES = {
+    ".css",
+    ".ini",
+    ".js",
+    ".json",
+    ".jsx",
+    ".md",
+    ".mjs",
+    ".ps1",
+    ".py",
+    ".sh",
+    ".svg",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
 
 
 def candidate_files() -> list[Path]:
@@ -66,7 +88,11 @@ def main() -> int:
             findings.append(f"forbidden binary/media extension: {relative}")
         if path.stat().st_size > MAX_FILE_BYTES:
             findings.append(f"file exceeds {MAX_FILE_BYTES} bytes: {relative}")
-        if path.name != ".env.example" and any(pattern.search(path.name) for pattern in FORBIDDEN_NAME_PATTERNS):
+        if (
+            path.name != ".env.example"
+            and path.name not in ALLOWED_SENSITIVE_SOURCE_NAMES
+            and any(pattern.search(path.name) for pattern in FORBIDDEN_NAME_PATTERNS)
+        ):
             findings.append(f"sensitive filename: {relative}")
 
         if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in {"AGENTS.md", ".gitignore"}:

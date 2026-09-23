@@ -101,7 +101,7 @@ class PromptBuilderTests(unittest.TestCase):
         definition = json.loads(
             (REPO_ROOT / "docs" / "workflow.definition.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(definition["schema_version"], 9)
+        self.assertEqual(definition["schema_version"], 10)
 
         audit = next(stage for stage in definition["stages"] if stage["id"] == "audit")
         conditions = set(audit["required_gate"]["conditions"])

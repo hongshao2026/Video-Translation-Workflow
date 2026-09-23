@@ -1,16 +1,27 @@
 # 视频译配工作区强制入口
 
-在本工作区进行任何下载、翻译、配音、重定时、渲染、验收、发布文案、章节重定位、封面生成或续跑之前，必须先完整阅读：
+主控首次接手生产任务时必须完整阅读以下文件。同一有效上下文仍保留已读规范且哈希未变时，续跑只做本地哈希校验；新 Agent、上下文丢失或规范变化时重新加载职责所需内容，不能以哈希代替首次阅读：
 
 1. `docs/LOCAL_DUBBING_WORKFLOW.md`
 2. `docs/TRANSLATION_REVIEW_SOP.md`
 3. `docs/AD_DETECTION_AND_OVERLAY_SOP.md`
 4. `docs/workflow.definition.json`
 5. 当前视频运行目录中的 `<video_id>_run/PROJECT.md`
+6. `docs/EVENT_DRIVEN_EXECUTION_SOP.md`
 
 如当前项目另有冻结稿、术语表、音色交接或人工决定，以用户对当前项目的最新明确决定为最高优先级。不得凭旧项目默认值覆盖当前项目决定。
 
-开始执行前，主控必须生成 `<video_id>_run/qa/workflow_lock.json`，写明上述文件的路径、版本或 SHA-256，并列出本次项目的冻结输入、当前阶段、下一道放行门以及 `media_format_selection=automatic_after_probe`、`ad_policy=detect_then_apply_evidence_based`、`translation_mode=codex_agent_direct_quality_first`、`translation_review=two_independent_agents_full_coverage`、`chapter_reading_review=required_before_translation_gate`、`chapter_reading_layout=sentence_aligned_verbatim`、`translation_approval=explicit_downstream_command_binds_current_version`、`chinese_tts_speed=1.0`、`sync_strategy=video_retime_only`、`preserve_all_formal_working_master_frames=true`、`audition_authorization=voice_selection_implies_audition`、`full_tts_authorization=user_generate_full_command`、`publication_package=required_after_final_machine_qa`、`publication_text_format=utf8_txt_only`、`cover_variants=16x9_and_4x3`。没有状态为 `pass` 的工作流锁，不得开始翻译、付费 TTS、渲染或正式发布包生成。用户在音色锁定后说“生成全片”“生成全文”或等价执行口令，即视为对当前冻结翻译、角色、音色和 TTS 参数的全文付费 TTS 与渲染授权；自动 dry-run 通过后直接继续，不得再请求费用或生成确认。
+开始执行前，主控必须生成 `<video_id>_run/qa/workflow_lock.json`，写明上述文件的路径、版本或 SHA-256，并列出本次项目的冻结输入、当前阶段、下一道放行门以及 `media_format_selection=automatic_after_probe`、`ad_policy=detect_then_apply_evidence_based`、`translation_mode=provider_agent_direct_quality_first`、`translation_review=two_independent_agents_full_coverage`、`chapter_reading_review=required_before_translation_gate`、`chapter_reading_layout=sentence_aligned_verbatim`、`translation_approval=explicit_downstream_command_binds_current_version`、`chinese_tts_speed=1.0`、`sync_strategy=video_retime_only`、`preserve_all_formal_working_master_frames=true`、`audition_authorization=voice_selection_implies_audition`、`full_tts_authorization=user_generate_full_command`、`publication_package=required_after_final_machine_qa`、`publication_text_format=utf8_txt_only`、`cover_variants=16x9_and_4x3`。没有状态为 `pass` 的工作流锁，不得开始翻译、付费 TTS、渲染或正式发布包生成。用户在音色锁定后说“生成全片”“生成全文”或等价执行口令，即视为对当前冻结翻译、角色、音色和 TTS 参数的全文付费 TTS 与渲染授权；自动 dry-run 通过后直接继续，不得再请求费用或生成确认。
+
+## 事件驱动与禁止模型主动轮询
+
+- 长任务由本地执行器持有进程，模型不得为查进度反复调用 `write_stdin`、`wait`、`list_agents`、日志尾读、状态文件、进程/GPU 查询或定时自我唤醒。正常进度只写本地；完成其他独立工作后结束响应，等待事件。
+- 仅在完成、自动恢复失败、付费状态不确定、需要语义或用户决定时通知模型。用户主动问进度允许一次快照，不得换工具重复查询。
+- 完成通知必须真实接通并记录接收/消费状态；不确定通知不得自动重发。没有通道时明确报告等待人工恢复，不得假装自动续跑。
+- 工作流锁冻结规范/输入/政策；纯阶段与进度写 runtime 状态，不重新生成锁。新锁必须含 `execution_mode=local_runner_event_driven`、`model_progress_polling=forbidden`、`document_loading=first_load_then_hash_check_in_retained_context`、`agent_handoff=minimal_frozen_role_packet`。
+- T/A/B 保持独立、全文和质量优先；采用冻结精简职责包，不继承主控整个排错历史。机械校验与阅读稿排版由固定程序执行；模型负责语义和视听判断。
+- 同一故障无新证据不得重复模型排错；幂等本地步骤有限重试，付费状态不确定禁止自动重试。
+- 钩子是防误操作护栏：Codex 不对已有 `write_stdin` 再跑 PreToolUse。不得声称文档/钩子能绝对封锁全部原始工具，也不得绕过宿主钩子信任要求。
 
 ## 不可违反的生产规则
 
@@ -18,7 +29,7 @@
 - 冻结正式时间槽前必须同时检测“可整段删除的口播/赞助内容”和“需要遮盖的画面广告、二维码、促销框或角标”。检测结果、证据时间点、置信度和处置理由写入 QA；根据证据自动执行：独立口播/赞助段删除，不宜删除的画面广告定时定位遮盖，非广告内容保留。不再逐项等待用户批准。
 - 广告处理后必须保留未经修改的下载母版，另建去广告/遮盖工作母版，并记录原时轴到新时轴映射。进入翻译前必须存在状态为 `pass` 的 `qa/ad_edit_gate.json`；即使未检测到广告，也要以 `no_ads_detected` 自动放行。
 - 画面广告遮盖必须按检测证据验证通过的时间区间和坐标执行，不得全片误盖。渲染层级固定为“视频画面 → 广告遮盖 → 烧录字幕”；字幕必须在最上层，不能被遮盖框、角标或其他叠加层挡住。软字幕仍须保留为独立字幕轨。
-- 默认采用质量优先翻译：必须由独立翻译 Agent T 直接根据冻结源文、说话人/上下文和项目术语表生成全文中文候选稿。Agent T 不得把本地模型旧译稿当作底稿，不得为适配原时间槽压缩语义，且必须保持全部稳定 ID。Codex Agent 暂不可用或额度不足时必须暂停并续跑，不得静默改用本地模型初译。
+- 默认采用质量优先翻译：必须由冻结的大模型 Provider 驱动独立翻译 Agent T，直接根据冻结源文、说话人/上下文和项目术语表生成全文中文候选稿。Agent T 不得把本地模型旧译稿当作底稿，不得为适配原时间槽压缩语义，且必须保持全部稳定 ID。冻结 Provider 暂不可用或额度不足时必须暂停并续跑，不得静默换模型或改用本地模型初译。
 - Agent T 的候选稿冻结后，必须再由两个与 T、主控彼此不同的独立审核 Agent 同时覆盖全文：Agent A 负责中文表达与上下文，Agent B 负责语义忠实、数字、否定、主客体、扑克术语与专业逻辑。T、A、B 不得互相代替；A/B 不得只分段各审一半，也不得由主控伪装成独立审核。
 - 双 Agent 审核后只能由主控合并裁决并生成新版本。裁决稿和全文回归通过后，必须按章节生成中文阅读稿并暂停给用户整体审阅；阅读稿只能按章节合并和排版裁决稿中的 `subtitle_zh`，不得改写、压缩、加入 TTS 朗读替换或提前写入未经批准的说话人结果。每个稳定 ID 必须且只能出现一次，章节时间优先使用正式工作母版时轴，并保留原视频章节时间供核对；最终发布章节仍须在视频重定时后再次映射。
 - 章节阅读稿默认采用 `chapter_reading_layout=sentence_aligned_verbatim`：同一章节内连续拼接相邻稳定槽的 `subtitle_zh`，只在完整句末或章节结束处分段，避免把同一句话因字幕槽边界拆成多行；稳定 ID 必须以内联不可见标记完整、唯一、顺序保留，每槽正文必须可从阅读稿逐字重建，禁止增删可见字符、改写或跨章节移动稳定 ID。纯排版修订不必重开 T/A/B，但必须生成递增版本阅读稿、状态为 `pass` 的验证报告，并使旧批准失效；用户随后发出的明确下游执行指令可重新绑定当前版本。

@@ -14,13 +14,23 @@ REQUIRED_DOCUMENTS = (
     "docs/LOCAL_DUBBING_WORKFLOW.md",
     "docs/TRANSLATION_REVIEW_SOP.md",
     "docs/AD_DETECTION_AND_OVERLAY_SOP.md",
+    "docs/EVENT_DRIVEN_EXECUTION_SOP.md",
     "docs/workflow.definition.json",
 )
 
 POLICIES = {
+    "execution_mode": "local_runner_event_driven",
+    "model_progress_polling": "forbidden",
+    "model_status_query": "explicit_user_request_or_actionable_event_only",
+    "document_loading": "first_load_then_hash_check_in_retained_context",
+    "agent_handoff": "minimal_frozen_role_packet",
+    "machine_gates": "deterministic_validators",
+    "error_recovery": "bounded_local_retry_then_evidence_event",
+    "notification_delivery": "durable_at_most_once_event",
+    "runtime_state": "separate_from_frozen_workflow_lock",
     "media_format_selection": "automatic_after_probe",
     "ad_policy": "detect_then_apply_evidence_based",
-    "translation_mode": "codex_agent_direct_quality_first",
+    "translation_mode": "provider_agent_direct_quality_first",
     "translation_review": "two_independent_agents_full_coverage",
     "chapter_reading_review": "required_before_translation_gate",
     "chapter_reading_layout": "sentence_aligned_verbatim",
@@ -41,6 +51,8 @@ POLICIES = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create a hash-bound workflow lock for one local run.")
     parser.add_argument("--run-dir", required=True, type=Path)
+    parser.add_argument("--rules-root", type=Path, default=Path(__file__).resolve().parents[1],
+                        help="Portable repo or workspace containing dub_workbench/docs.")
     parser.add_argument("--stage", required=True)
     parser.add_argument("--next-gate", required=True)
     parser.add_argument(
@@ -104,6 +116,7 @@ def parse_frozen_inputs(values: list[str], repo_root: Path, run_dir: Path) -> tu
             {
                 "label": label.strip(),
                 "path": display_path(path, repo_root, run_dir),
+                "source_path": str(path.resolve()),
                 "sha256": sha256_file(path),
                 "bytes": path.stat().st_size,
             }
@@ -112,13 +125,15 @@ def parse_frozen_inputs(values: list[str], repo_root: Path, run_dir: Path) -> tu
 
 
 def build_payload(args: argparse.Namespace) -> dict:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = getattr(args, "rules_root", Path(__file__).resolve().parents[1]).resolve()
+    documents_prefix = "docs/" if (repo_root / "docs/workflow.definition.json").is_file() else "dub_workbench/docs/"
     run_dir = args.run_dir.resolve()
     project_path = run_dir / "PROJECT.md"
     errors: list[str] = []
 
     documents: list[dict] = []
     for relative in REQUIRED_DOCUMENTS:
+        relative = relative.replace("docs/", documents_prefix, 1) if relative.startswith("docs/") else relative
         path = repo_root / relative
         if not path.is_file():
             errors.append(f"Missing required document: {relative}")
@@ -146,7 +161,7 @@ def build_payload(args: argparse.Namespace) -> dict:
     frozen_inputs, input_errors = parse_frozen_inputs(args.frozen_input, repo_root, run_dir)
     errors.extend(input_errors)
 
-    workflow_definition = repo_root / "docs" / "workflow.definition.json"
+    workflow_definition = repo_root / documents_prefix / "workflow.definition.json"
     schema_version = None
     if workflow_definition.is_file():
         try:
@@ -155,10 +170,11 @@ def build_payload(args: argparse.Namespace) -> dict:
             errors.append(f"Invalid workflow definition: {exc}")
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "pass" if not errors else "fail",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "workflow_schema_version": schema_version,
+        "rules_root": str(repo_root),
         "current_stage": args.stage,
         "next_gate": args.next_gate,
         "required_documents": documents,
@@ -184,7 +200,8 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 
 
 def comparable(payload: dict) -> dict:
-    result = {key: value for key, value in payload.items() if key not in {"generated_at", "notes"}}
+    result = {key: value for key, value in payload.items()
+              if key not in {"generated_at", "notes", "current_stage", "next_gate"}}
     project = dict(result.get("project") or {})
     project.pop("file_sha256_at_generation", None)
     project.pop("bytes", None)
@@ -212,8 +229,20 @@ def main() -> int:
         print(f"PASS: workflow lock is current: {lock_path}")
         return 0
 
-    atomic_write_json(lock_path, expected)
-    print(f"{expected['status'].upper()}: wrote workflow lock: {lock_path}")
+    reused = False
+    if lock_path.is_file():
+        try:
+            reused = comparable(json.loads(lock_path.read_text(encoding="utf-8"))) == comparable(expected)
+        except (OSError, ValueError, TypeError):
+            pass
+    if not reused:
+        atomic_write_json(lock_path, expected)
+    if expected["status"] == "pass":
+        atomic_write_json(args.run_dir.resolve() / "runtime" / "state.json", {
+            "schema_version": 1, "current_stage": args.stage, "next_gate": args.next_gate,
+            "workflow_lock_sha256": sha256_file(lock_path), "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    print(f"{expected['status'].upper()}: {'reused' if reused else 'wrote'} workflow lock: {lock_path}")
     for error in expected["errors"]:
         print(f"- {error}")
     return 0 if expected["status"] == "pass" else 1
